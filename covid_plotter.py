@@ -58,21 +58,21 @@ def main():
             df_national['metric_1'].append(df['cases'][i])
             df_national['metric_2'].append(df['deaths'][i])
 
-    # Create Column Date Source for each aggregate (which can be filtered later)
+    # Create Column Data Source for each aggregate (which can be filtered later)
     CDS_full = ColumnDataSource(df)
     # Chose initial plot data
     CDS_plot = ColumnDataSource(df_national)
 
     #create plot layouts
     #linear metric 1
-    p1 = figure(title='COVID-19 data', x_axis_label='date', y_axis_label='Cumulative Cases',\
+    p1 = figure(title='COVID-19 data', x_axis_label='date', y_axis_label='Cases',\
                plot_width=400, plot_height=300, x_axis_type="datetime", y_axis_type='linear')
     line_p1 = p1.line(x='date', y='metric_1', source=CDS_plot)
 
     panel_p1 = Panel(child=p1, title='linear')
 
     #log metric 1
-    p2 = figure(title='COVID-19 data', x_axis_label='date', y_axis_label='Cumulative Cases',\
+    p2 = figure(title='COVID-19 data', x_axis_label='date', y_axis_label='Cases',\
                plot_width=400, plot_height=300, x_axis_type="datetime", y_axis_type='log')
 
     line_p2 = p2.line(x='date', y='metric_1', source=CDS_plot)
@@ -83,7 +83,7 @@ def main():
     panels_p = [panel_p1, panel_p2]
 
     #linear metric 2
-    q1 = figure(title='COVID-19 data', x_axis_label='date', y_axis_label='Cumulative Deaths',\
+    q1 = figure(title='COVID-19 data', x_axis_label='date', y_axis_label='Deaths',\
                plot_width=400, plot_height=300, x_axis_type="datetime", y_axis_type='linear')
 
     line_q1 = q1.line(x='date', y='metric_2', source=CDS_plot)
@@ -91,7 +91,7 @@ def main():
     panel_q1 = Panel(child=q1, title='linear')
 
     #log metric 2
-    q2 = figure(title='COVID-19 data', x_axis_label='date', y_axis_label='Cumulative Deaths',\
+    q2 = figure(title='COVID-19 data', x_axis_label='date', y_axis_label='Deaths',\
                plot_width=400, plot_height=300, x_axis_type="datetime", y_axis_type='log')
 
     line_q2 = q2.line(x='date', y='metric_2', source=CDS_plot)
@@ -100,7 +100,7 @@ def main():
 
     #panel metric 2
     panels_q = [panel_q1, panel_q2]
-        
+
     tabs_p = Tabs(tabs=panels_p)
     tabs_q = Tabs(tabs=panels_q)
 
@@ -123,15 +123,15 @@ def main():
     county_menu = Select(title='County', value='Abbeville', options=counties, visible=False)
 
     # Callback code
-    update_data = CustomJS(args=dict(CDS_plot=CDS_plot, 
-                                     CDS_full=CDS_full, 
+    update_data = CustomJS(args=dict(CDS_plot=CDS_plot,
+                                     CDS_full=CDS_full,
                                      m_1=metric_1,
                                      m_2=metric_2,
                                      me_1=method_1,
                                      me_2=method_2,
                                      avg=roll_avg,
                                      scale=scale_menu,
-                                     state=state_menu, 
+                                     state=state_menu,
                                      county=county_menu),
                            code="""
         let full_data = CDS_full.data
@@ -164,26 +164,14 @@ def main():
             
             if (count > pos && pos > -1) {
                 // If a date is repeated, aggregate
-                if (isNaN(full_data[m_1.value][i])) {}
-                else {
-                    metric_1[pos] += full_data[m_1.value][i]
-                }
-                if (isNaN(full_data[m_2.value][i])) {}
-                else {
-                    metric_2[pos] += full_data[m_2.value][i]
-                }
+                metric_1[pos] += full_data[m_1.value][i]
+                metric_2[pos] += full_data[m_2.value][i]
             }
             else { // overwrite the old data
                 index[count] = count
                 dates[count] = full_data['date'][i]
-                if (isNaN(full_data[m_1.value][i])) {}
-                else {
-                    metric_1[count] = full_data[m_1.value][i]
-                }
-                if (isNaN(full_data[m_2.value][i])) {}
-                else {
-                    metric_2[count] = full_data[m_2.value][i]
-                }
+                metric_1[count] = full_data[m_1.value][i]
+                metric_2[count] = full_data[m_2.value][i]
                 count += 1
             }
         }
@@ -192,19 +180,19 @@ def main():
         if (me_1.value === 'difference') { // Assumes the input is cumulative
             for (let i=index.length-1; i > 0; i--) {
                 metric_1[i] -= metric_1[i-1]
-            } 
+            }
         }
         if (me_2.value === 'difference') { // Assumes the input is cumulative
             for (let i=index.length-1; i > 0; i--) {
                 metric_2[i] -= metric_2[i-1]
-            } 
+            }
         }
         // Rolling Average (uniform backwards window (avg over last x days))
         if (avg.value > 1) {
             for (let i=index.length-1; i > avg.value-1; i--) { // a for loop crashes :/
                 metric_1[i] = metric_1.slice(i-avg.value, i+1).reduce((a, b) => a + b, 0) / (avg.value+1)
                 metric_2[i] = metric_2.slice(i-avg.value, i+1).reduce((a, b) => a + b, 0) / (avg.value+1)
-            } 
+            }
         }
         
         // update ColumnDataSource
@@ -216,16 +204,16 @@ def main():
         CDS_plot.change.emit()
     """)
 
-    update_menu = CustomJS(args=dict(scale=scale_menu, 
-                                     state=state_menu, 
-                                     county=county_menu, 
-                                     CDS_full=CDS_full), 
+    update_menu = CustomJS(args=dict(scale=scale_menu,
+                                     state=state_menu,
+                                     county=county_menu,
+                                     CDS_full=CDS_full),
                            code="""
         let source = CDS_full.data
         if (scale.value == 'national') {
             state.visible = false
             county.visible = false
-        }  
+        }
         if (scale.value === 'state') {
             state.visible = true
             county.visible = false
@@ -261,7 +249,7 @@ def main():
 
     county_menu.js_on_change('value', update_data)
 
-    method_1.js_on_change('value', update_data) 
+    method_1.js_on_change('value', update_data)
     method_2.js_on_change('value', update_data)
 
     roll_avg.js_on_change('value', update_data)
@@ -271,7 +259,7 @@ def main():
     # and update plot labels
 
     # Display
-    layout = column(row(tabs_p, tabs_q), row(metric_1, metric_2), row(method_1, method_2, roll_avg), row(scale_menu, state_menu, county_menu))
+    layout = column(row(tabs_p, tabs_q), row(metric_1, metric_2), roll_avg, row(method_1, method_2), row(scale_menu, state_menu, county_menu))
 
     show(layout)
 
