@@ -10,7 +10,7 @@ from os.path import exists
 from datetime import datetime
 from urllib.request import urlopen
 
-from bokeh.models import ColumnDataSource, CustomJS, Select, Slider, Button
+from bokeh.models import ColumnDataSource, CustomJS, Select, Slider, Button, Div
 from bokeh.models.widgets import Panel, Tabs
 from bokeh.layouts import row, column, layout
 from bokeh.plotting import figure, show
@@ -193,11 +193,11 @@ def make_plots(df, df_national):
                                    'metric' : df_national[metrics[0]]})
 
     # Widgets
-    menu_menu_1 = Select(title='menu 1', value='national', options=['national', 'state', 'county'], width=menu_width)
-    state_menu_1 = Select(title='State 1', value='Alabama', options=states, visible=False, width=menu_width)
-    county_menu_1 = Select(title='County 1', value='Abbeville', options=counties, visible=False, width=menu_width)
-    metric_1 = Select(title="Metric 1", value=metrics[0], options=metrics, sizing_mode='both')
-    method_1 = Select(title="Method 1", value='cumulative', options=['cumulative', 'difference'], sizing_mode='stretch_both')
+    scale_menu_1 = Select(title='menu 1', value='national', options=['national', 'state', 'county'], sizing_mode='stretch_width')
+    state_menu_1 = Select(title='State 1', value='Alabama', options=states, visible=False, sizing_mode='stretch_width')
+    county_menu_1 = Select(title='County 1', value='Abbeville', options=counties, visible=False, sizing_mode='stretch_width')
+    metric_1 = Select(title="Metric 1", value=metrics[0], options=metrics, sizing_mode='stretch_width')
+    method_1 = Select(title="Method 1", value='cumulative', options=['cumulative', 'difference'], sizing_mode='stretch_width')
 
     # Construct callback functions
     update_menu_1 = CustomJS(args=dict(scale=scale_menu_1,
@@ -232,20 +232,23 @@ def make_plots(df, df_national):
     # Create plot layout
     # linear metric 1
     linear_1 = figure(title='COVID-19 data_1', x_axis_label='date', y_axis_label='Cases',\
-               x_axis_type="datetime", y_axis_type='linear', sizing_mode='stretch_both')
+               x_axis_type="datetime", y_axis_type='linear', sizing_mode='scale_both')
     linear_1.line(x='date', y='metric', source=CDS_plot_1)
     panel_linear_1 = Panel(child=linear_1, title='linear')
     # log metric 1
     log_1 = figure(title='COVID-19 data_1', x_axis_label='date', y_axis_label='Cases',\
-               x_axis_type="datetime", y_axis_type='log', sizing_mode='stretch_both')
+            x_axis_type="datetime", y_axis_type='log', sizing_mode='scale_both')
     log_1.line(x='date', y='metric', source=CDS_plot_1)
     panel_log_1 = Panel(child=log_1, title='log')
     # panel metric 1
     panels_1 = [panel_linear_1, panel_log_1]
     tabs_1 = Tabs(tabs=panels_1, aspect_ratio=aspect, sizing_mode='scale_both')
     column_1 = layout(tabs_1,
-                      [method_1, metric_1],
-                      [scale_menu_1, state_menu_1, county_menu_1],
+                      method_1,
+                      metric_1,
+                      scale_menu_1,
+                      state_menu_1,
+                      county_menu_1,
                       sizing_mode='stretch_both',
                      )
 
@@ -259,11 +262,11 @@ def make_plots(df, df_national):
                                    'metric' : df_national[metrics[1]]})
 
     # Widgets
-    scale_menu_2 = Select(title='Scale 2', value='national', options=['national', 'state', 'county'], sizing_mode='stretch_both')
-    state_menu_2 = Select(title='state 2', value='Alabama', options=states, sizing_mode='stretch_both', visible=False)
-    county_menu_2 = Select(title='County 2', value='Abbeville', options=counties, sizing_mode='stretch_both', visible=False)
-    metric_2 = Select(title="Metric 2", value=metrics[1], options=metrics, sizing_mode='stretch_both')
-    method_2 = Select(title="Method 2", value='cumulative', options=['cumulative', 'difference'], sizing_mode='stretch_both')
+    scale_menu_2 = Select(title='Scale 2', value='national', options=['national', 'state', 'county'], sizing_mode='stretch_width')
+    state_menu_2 = Select(title='state 2', value='Alabama', options=states, sizing_mode='stretch_width', visible=False)
+    county_menu_2 = Select(title='County 2', value='Abbeville', options=counties, sizing_mode='stretch_width', visible=False)
+    metric_2 = Select(title="Metric 2", value=metrics[1], options=metrics, sizing_mode='stretch_width')
+    method_2 = Select(title="Method 2", value='cumulative', options=['cumulative', 'difference'], sizing_mode='stretch_width')
 
     # Construct callback functions
     update_menu_2 = CustomJS(args=dict(scale=scale_menu_2,
@@ -298,20 +301,23 @@ def make_plots(df, df_national):
     # Create plot layout
     # linear metric 2
     linear_2 = figure(title='COVID-19 data_2', x_axis_label='date', y_axis_label='Deaths',\
-               x_axis_type="datetime", y_axis_type='linear', sizing_mode='stretch_both')
+               x_axis_type="datetime", y_axis_type='linear', sizing_mode='scale_both')
     linear_2.line(x='date', y='metric', source=CDS_plot_2)
     panel_linear_2 = Panel(child=linear_2, title='linear')
     # log metric 2
     log_2 = figure(title='COVID-19 data_2', x_axis_label='date', y_axis_label='Deaths',\
-            x_axis_type="datetime", y_axis_type='log', sizing_mode='stretch_both')
+            x_axis_type="datetime", y_axis_type='log', sizing_mode='scale_both')
     log_2.line(x='date', y='metric', source=CDS_plot_2)
     panel_log_2 = Panel(child=log_2, title='log')
     # panel metric 2
     panels_2 = [panel_linear_2, panel_log_2]
     tabs_2 = Tabs(tabs=panels_2, aspect_ratio=aspect, sizing_mode='scale_both')
     column_2 = layout(tabs_2,
-                      [method_2, metric_2],
-                      [scale_menu_2, state_menu_2, county_menu_2],
+                      method_2,
+                      metric_2,
+                      scale_menu_2,
+                      state_menu_2,
+                      county_menu_2,
                       sizing_mode='stretch_both',
                      )
 
@@ -333,8 +339,8 @@ def make_plots(df, df_national):
                         )
 
     # Display
-    display = layout([column_1, column_2],
-                     [roll_avg, button],
+    display = layout([button, roll_avg],
+                     [column_1, column_2],
                      sizing_mode='stretch_both',
                     )
 
