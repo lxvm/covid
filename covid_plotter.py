@@ -12,7 +12,7 @@ from urllib.request import urlopen
 
 from bokeh.models import ColumnDataSource, CustomJS, Select, Slider, Button, Div
 from bokeh.models.widgets import Panel, Tabs
-from bokeh.layouts import row, column, layout
+from bokeh.layouts import layout, gridplot
 from bokeh.plotting import figure, show
 from bokeh.io import output_file
 
@@ -86,7 +86,8 @@ def make_plots(df, df_national):
     js_code_data = """
         let plot_x = []
         let plot_y = []
-        let nDays = 0
+        let plot_z = []
+        let nDays = -1
         let yesterdate = 0
 
         function mask (x) {
@@ -117,7 +118,9 @@ def make_plots(df, df_national):
         }
 
 
-        // Extra transformations
+        // Extra transformations (edge cases are the first few days)
+        // Except for edge cases, you can show that the order of 
+        // difference and average doesn't matter
         if (method.value === 'difference') {
             // Converts from raw cumulative data
             for (let i=plot_x.length-1; i > 0; i--) {
@@ -131,10 +134,15 @@ def make_plots(df, df_national):
             }
         }
 
+        // cobweb plotting
+        plot_z = plot_y.slice()
+        plot_z.pop()
+        plot_z.unshift(0)
+        console.log(plot_x.length, plot_y.length, plot_z.length)
         // update ColumnDataSource
         plot.data['date'] = plot_x
         plot.data['metric'] = plot_y
-        //console.log(plot_x, plot_y)
+        plot.data['cobweb'] = plot_z
         plot.change.emit()
     """
 
@@ -177,11 +185,6 @@ def make_plots(df, df_national):
         county_2.value = county_1.value
     """
 
-    # Plotting size parameters
-
-    aspect = 1
-    widget_height = 100
-
     ### End shared objects
 
 
@@ -190,14 +193,16 @@ def make_plots(df, df_national):
     # Initial plot data
 
     CDS_plot_1 = ColumnDataSource({'date' : df_national['date'],
-                                   'metric' : df_national[metrics[0]]})
+                                   'metric' : df_national[metrics[0]],
+                                   'cobweb' : [0] + df_national[metrics[0]][:-1],
+                                 })
 
     # Widgets
-    scale_menu_1 = Select(title='menu 1', value='national', options=['national', 'state', 'county'], sizing_mode='stretch_width')
-    state_menu_1 = Select(title='State 1', value='Alabama', options=states, visible=False, sizing_mode='stretch_width')
-    county_menu_1 = Select(title='County 1', value='Abbeville', options=counties, visible=False, sizing_mode='stretch_width')
-    metric_1 = Select(title="Metric 1", value=metrics[0], options=metrics, sizing_mode='stretch_width')
-    method_1 = Select(title="Method 1", value='cumulative', options=['cumulative', 'difference'], sizing_mode='stretch_width')
+    scale_menu_1 = Select(title='Scale 1', value='national', options=['national', 'state', 'county'])
+    state_menu_1 = Select(title='State 1', value=states[0], options=states, visible=False)
+    county_menu_1 = Select(title='County 1', value=counties[0], options=counties, visible=False)
+    metric_1 = Select(title="Metric 1", value=metrics[0], options=metrics)
+    method_1 = Select(title="Method 1", value='cumulative', options=['cumulative', 'difference'])
 
     # Construct callback functions
     update_menu_1 = CustomJS(args=dict(scale=scale_menu_1,
@@ -228,29 +233,38 @@ def make_plots(df, df_national):
     county_menu_1.js_on_change('value', update_data_1)
     metric_1.js_on_change('value', update_data_1)
     method_1.js_on_change('value', update_data_1)
+    widget_list_1 = [scale_menu_1,
+                     state_menu_1,
+                     county_menu_1,
+                     metric_1,
+                     method_1,
+                    ]
+    widgets_1 = layout([[method_1, metric_1],
+                 [scale_menu_1, state_menu_1, county_menu_1],
+                ])
 
     # Create plot layout
     # linear metric 1
     linear_1 = figure(title='COVID-19 data_1', x_axis_label='date', y_axis_label='Cases',\
-               x_axis_type="datetime", y_axis_type='linear', sizing_mode='scale_both')
+               x_axis_type='datetime', y_axis_type='linear')
     linear_1.line(x='date', y='metric', source=CDS_plot_1)
     panel_linear_1 = Panel(child=linear_1, title='linear')
     # log metric 1
     log_1 = figure(title='COVID-19 data_1', x_axis_label='date', y_axis_label='Cases',\
-            x_axis_type="datetime", y_axis_type='log', sizing_mode='scale_both')
+            x_axis_type='datetime', y_axis_type='log')
     log_1.line(x='date', y='metric', source=CDS_plot_1)
     panel_log_1 = Panel(child=log_1, title='log')
+    # cobweb metric 1
+    cobweb_1 = figure(title='COVID-19 data_1', x_axis_label='date', y_axis_label='Cases',\
+            x_axis_type='linear', y_axis_type='linear')
+    cobweb_1.step(x='cobweb', y='metric', source=CDS_plot_1)
+    cobweb_1.line(x='cobweb', y='cobweb', source=CDS_plot_1, line_color='red')
+    panel_cobweb_1 = Panel(child=cobweb_1, title='cobweb')
     # panel metric 1
-    panels_1 = [panel_linear_1, panel_log_1]
-    tabs_1 = Tabs(tabs=panels_1, aspect_ratio=aspect, sizing_mode='scale_both')
-    column_1 = layout(tabs_1,
-                      method_1,
-                      metric_1,
-                      scale_menu_1,
-                      state_menu_1,
-                      county_menu_1,
-                      sizing_mode='stretch_both',
-                     )
+    panels_1 = [panel_linear_1, panel_log_1, panel_cobweb_1]
+    tabs_1 = Tabs(tabs=panels_1)
+    plot_list_1 = [linear_1, log_1, cobweb_1,
+                  ]
 
     ### End plot 1
 
@@ -259,14 +273,25 @@ def make_plots(df, df_national):
 
     # Initial plot data
     CDS_plot_2 = ColumnDataSource({'date' : df_national['date'],
-                                   'metric' : df_national[metrics[1]]})
+                                   'metric' : df_national[metrics[1]],
+                                   'cobweb' : [0] + df_national[metrics[1]][:-1],
+                                  })
 
     # Widgets
-    scale_menu_2 = Select(title='Scale 2', value='national', options=['national', 'state', 'county'], sizing_mode='stretch_width')
-    state_menu_2 = Select(title='state 2', value='Alabama', options=states, sizing_mode='stretch_width', visible=False)
-    county_menu_2 = Select(title='County 2', value='Abbeville', options=counties, sizing_mode='stretch_width', visible=False)
-    metric_2 = Select(title="Metric 2", value=metrics[1], options=metrics, sizing_mode='stretch_width')
-    method_2 = Select(title="Method 2", value='cumulative', options=['cumulative', 'difference'], sizing_mode='stretch_width')
+    scale_menu_2 = Select(title='Scale 2', value='national', options=['national', 'state', 'county'])
+    state_menu_2 = Select(title='State 2', value=states[0], options=states, visible=False)
+    county_menu_2 = Select(title='County 2', value=counties[0], options=counties, visible=False)
+    metric_2 = Select(title="Metric 2", value=metrics[1], options=metrics)
+    method_2 = Select(title="Method 2", value='cumulative', options=['cumulative', 'difference'])
+    widget_list_2 = [scale_menu_2,
+                     state_menu_2,
+                     county_menu_2,
+                     metric_2,
+                     method_2,
+                    ]
+    widgets_2 = layout([[method_2, metric_2],
+                        [scale_menu_2, state_menu_2, county_menu_2],
+                       ])
 
     # Construct callback functions
     update_menu_2 = CustomJS(args=dict(scale=scale_menu_2,
@@ -301,25 +326,29 @@ def make_plots(df, df_national):
     # Create plot layout
     # linear metric 2
     linear_2 = figure(title='COVID-19 data_2', x_axis_label='date', y_axis_label='Deaths',\
-               x_axis_type="datetime", y_axis_type='linear', sizing_mode='scale_both')
+               x_axis_type="datetime", y_axis_type='linear')
     linear_2.line(x='date', y='metric', source=CDS_plot_2)
     panel_linear_2 = Panel(child=linear_2, title='linear')
     # log metric 2
     log_2 = figure(title='COVID-19 data_2', x_axis_label='date', y_axis_label='Deaths',\
-            x_axis_type="datetime", y_axis_type='log', sizing_mode='scale_both')
+            x_axis_type="datetime", y_axis_type='log')
     log_2.line(x='date', y='metric', source=CDS_plot_2)
     panel_log_2 = Panel(child=log_2, title='log')
+    # cobweb metric 2
+    cobweb_2 = figure(title='COVID-19 data_2', x_axis_label='Cases today', y_axis_label='Cases tomorrow',\
+            x_axis_type='linear', y_axis_type='linear')
+    cobweb_2.step(x='cobweb', y='metric', source=CDS_plot_2)
+    cobweb_2.line(x='cobweb', y='cobweb', source=CDS_plot_2, line_color='red', )
+    panel_cobweb_2 = Panel(child=cobweb_2, title='cobweb')
     # panel metric 2
-    panels_2 = [panel_linear_2, panel_log_2]
-    tabs_2 = Tabs(tabs=panels_2, aspect_ratio=aspect, sizing_mode='scale_both')
-    column_2 = layout(tabs_2,
-                      method_2,
-                      metric_2,
-                      scale_menu_2,
-                      state_menu_2,
-                      county_menu_2,
-                      sizing_mode='stretch_both',
-                     )
+    panels_2 = [panel_linear_2, panel_log_2, panel_cobweb_2]
+    tabs_2 = Tabs(tabs=panels_2)
+
+    plot_list_2 = [linear_2,
+                   log_2,
+                   cobweb_2,
+                  ]
+
 
     ### End plot 2
 
@@ -339,12 +368,26 @@ def make_plots(df, df_national):
                         )
 
     # Display
-    display = layout([button, roll_avg],
-                     [column_1, column_2],
-                     sizing_mode='stretch_both',
-                    )
+    for e in widget_list_1 + widget_list_2:
+        e.height = 50
+        e.width = 100
+        e.sizing_mode = 'fixed'
+    for e in plot_list_1 + plot_list_2:
+        e.sizing_mode = 'scale_both'
+    for e in [tabs_1, tabs_2]:
+        e.aspect_ratio = 1.1
+        e.sizing_mode = 'scale_both'
+    for e in [widgets_1, widgets_2]:
+        e.sizing_mode = 'stretch_both'
+    for e in [button, roll_avg]:
+        e.sizing_mode = 'stretch_width'
+    display = gridplot([tabs_1, tabs_2,
+                        button, roll_avg,
+                        widgets_1, widgets_2,
+                       ], ncols=2, sizing_mode='stretch_both')
 
     show(display)
+
     return
 
 
