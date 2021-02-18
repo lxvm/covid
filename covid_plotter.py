@@ -2,266 +2,349 @@
 
 # covid_plotter.py
 # Written by Lorenzo Van Munoz
-# Last programmed 16/02/2021
+# Last programmed 18/02/2021
 
-from csv import reader
+from csv import reader, writer
 from codecs import iterdecode
+from os.path import exists
 from datetime import datetime
 from urllib.request import urlopen
 
-from bokeh.models import ColumnDataSource, CustomJS, Select, Slider
+from bokeh.models import ColumnDataSource, CustomJS, Select, Slider, Button
 from bokeh.models.widgets import Panel, Tabs
+from bokeh.layouts import row, column, layout
 from bokeh.plotting import figure, show
-from bokeh.layouts import row, column
 from bokeh.io import output_file
 
-def main():
+def import_data():
     output_file('covid_static.html')
-    url = "http://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv"
+    url = 'http://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'
+    cache = '/home/lxvm/repos/covid/covid_data.csv'
 
-    with urlopen(url) as html:
-        html = iterdecode(html, 'utf-8')
-        data = reader(html)
-        
+    if not exists(cache):
+        with urlopen(url) as html, open(cache, 'w', newline='') as csvfile:
+            html = iterdecode(html, 'utf-8')
+            data = reader(html)
+            writer(csvfile).writerows(data)
+
+    with open(cache, 'r') as csvfile:
+        data = reader(csvfile)
         # We have imported the rows in the csv as lists
         # and need to wrangle the columns into dictionaries
         # for use in a ColumnDataSource
-        
+
         # First row in csv gives column names
         colnames = next(data)
-        df = {col:[] for col in colnames}
-        
+        filter = ['date', 'cases', 'deaths', 'state', 'county']
+        df = {col:[] for col in colnames if col in filter}
+
         # Populate dataframe from csv
-        for index, item in enumerate(data):
-            for i, key in enumerate(df.keys()):
-                if key in ['date']:
-                    df[key].append(datetime(*[int(e) for e in item[i].split('-')]))
-                elif key in ['cases', 'deaths']:
-                    if item[i].isnumeric():
-                        df[key].append(float(item[i]))
-                    else: # Missing data
-                        df[key].append(0.)
-                else:
-                    df[key].append(item[i])
-        df['index'] = list(range(len(df['date'])))
+        for i, rrow in enumerate(data):
+
+            for j, col in enumerate(rrow):
+                if colnames[j] in filter:
+                    key = colnames[j]
+                    if key in ['date']:
+                        df[colnames[j]].append(datetime(*[int(e) for e in col.split('-')]))
+                    elif key in ['cases', 'deaths']:
+                        if col.isnumeric():
+                            df[key].append(float(col))
+                        else: # Missing data as zero
+                            df[key].append(0.)
+                    else:
+                        df[key].append(col)
 
     # create national aggregates
-    df_national = {'index':[], 'date':[], 'metric_1':[], 'metric_2':[]}
+    df_national = {key:[] for key in ['date', 'cases', 'deaths']}
     for i, e in enumerate(df['date']):
         if e in df_national['date']:
             pos = df_national['date'].index(e)
-            df_national['metric_1'][pos] += df['cases'][i]
-            df_national['metric_2'][pos] += df['deaths'][i]
+            for key in ['cases', 'deaths']:
+                df_national[key][pos] += df[key][i]
         else:
-            df_national['index'].append(len(df_national['index']))
-            df_national['date'].append(df['date'][i])
-            df_national['metric_1'].append(df['cases'][i])
-            df_national['metric_2'].append(df['deaths'][i])
+            for key in df_national.keys():
+                df_national[key].append(df[key][i])
+    return (df, df_national)
 
-    # Create Column Data Source for each aggregate (which can be filtered later)
+
+def make_plots(df, df_national):
+    ### Begin Shared objects
+
+    # Column Data Source (which can be filtered later)
     CDS_full = ColumnDataSource(df)
-    # Chose initial plot data
-    CDS_plot = ColumnDataSource(df_national)
 
-    #create plot layouts
-    #linear metric 1
-    p1 = figure(title='COVID-19 data', x_axis_label='date', y_axis_label='Cases',\
-               plot_width=400, plot_height=300, x_axis_type="datetime", y_axis_type='linear')
-    line_p1 = p1.line(x='date', y='metric_1', source=CDS_plot)
-
-    panel_p1 = Panel(child=p1, title='linear')
-
-    #log metric 1
-    p2 = figure(title='COVID-19 data', x_axis_label='date', y_axis_label='Cases',\
-               plot_width=400, plot_height=300, x_axis_type="datetime", y_axis_type='log')
-
-    line_p2 = p2.line(x='date', y='metric_1', source=CDS_plot)
-
-    panel_p2 = Panel(child=p2, title='log')
-
-    #panel metric 1
-    panels_p = [panel_p1, panel_p2]
-
-    #linear metric 2
-    q1 = figure(title='COVID-19 data', x_axis_label='date', y_axis_label='Deaths',\
-               plot_width=400, plot_height=300, x_axis_type="datetime", y_axis_type='linear')
-
-    line_q1 = q1.line(x='date', y='metric_2', source=CDS_plot)
-
-    panel_q1 = Panel(child=q1, title='linear')
-
-    #log metric 2
-    q2 = figure(title='COVID-19 data', x_axis_label='date', y_axis_label='Deaths',\
-               plot_width=400, plot_height=300, x_axis_type="datetime", y_axis_type='log')
-
-    line_q2 = q2.line(x='date', y='metric_2', source=CDS_plot)
-
-    panel_q2 = Panel(child=q2, title='log')
-
-    #panel metric 2
-    panels_q = [panel_q1, panel_q2]
-
-    tabs_p = Tabs(tabs=panels_p)
-    tabs_q = Tabs(tabs=panels_q)
-
-
-    # Widgets
-    metric_1 = Select(title="Metric 1", value='cases', options=['cases', 'deaths'], visible=False)
-    metric_2 = Select(title="Metric 2", value='deaths', options=['cases', 'deaths'], visible=False)
-
-    method_1 = Select(title="Method 1", value='cumulative', options=['cumulative', 'difference'])
-    method_2 = Select(title="Method 2", value='cumulative', options=['cumulative', 'difference'])
-
-    roll_avg = Slider(title='Rolling Average', value=1, start=1, end=14, step=1)
-
-    scale_menu = Select(title='Scale', value='national', options=['national', 'state', 'county'])
-
+    # Shared options
     states = sorted(list(set(CDS_full.data['state'])))
-    state_menu = Select(title='State', value='Alabama', options=states, visible=False)
-
     counties = sorted(list(set(CDS_full.data['county'])))
-    county_menu = Select(title='County', value='Abbeville', options=counties, visible=False)
+    metrics = ['cases', 'deaths']
 
-    # Callback code
-    update_data = CustomJS(args=dict(CDS_plot=CDS_plot,
-                                     CDS_full=CDS_full,
-                                     m_1=metric_1,
-                                     m_2=metric_2,
-                                     me_1=method_1,
-                                     me_2=method_2,
-                                     avg=roll_avg,
-                                     scale=scale_menu,
-                                     state=state_menu,
-                                     county=county_menu),
-                           code="""
-        let full_data = CDS_full.data
-        let index = []
-        let dates = []
-        let metric_1 = []
-        let metric_2 = []
-        let pos = 0
-        let count = 0
-        
-        // Aggregate data
-        for (let i = 0; i < full_data['date'].length;  i++) { //
+    # Shared Widgets
+    button = Button(label='Synchronize', button_type="success", sizing_mode='stretch_width')
+    roll_avg = Slider(title='Rolling Average', value=1, start=1, end=14, step=1, sizing_mode='stretch_width')
+
+    # Shared Callback code
+    js_code_data = """
+        let plot_x = []
+        let plot_y = []
+        let nDays = 0
+        let yesterdate = 0
+
+        function mask (x) {
             if (scale.value === 'national') {
-                // console.log(i, full_data['state'][i], full_data['county'][i])
-                update_data(i)
+                return true
             }
-            else if (scale.value === 'state' && full_data['state'][i] === state.value) {
-                // console.log(i, full_data['county'][i])
-                update_data(i)
+            else if (scale.value === 'state') {
+                return source.data['state'][x] === state.value
             }
-            else if (scale.value === 'county' && full_data['county'][i] === county.value) {
-                // console.log(i)
-                update_data(i)
+            else { // if (scale.value === 'county') {
+                return source.data['county'][x] === county.value
             }
         }
-        
-        function update_data(i) {
-            pos = dates.indexOf(full_data['date'][i])
-            // console.log(pos, count, full_data['date'][i])
-            
-            if (count > pos && pos > -1) {
-                // If a date is repeated, aggregate
-                metric_1[pos] += full_data[m_1.value][i]
-                metric_2[pos] += full_data[m_2.value][i]
-            }
-            else { // overwrite the old data
-                index[count] = count
-                dates[count] = full_data['date'][i]
-                metric_1[count] = full_data[m_1.value][i]
-                metric_2[count] = full_data[m_2.value][i]
-                count += 1
+
+        // this works because it knows the dates are in increasing order
+        for (let i=0; i < source.data['date'].length; i++) {
+            if (mask(i)) { // filter by scale
+                if (yesterdate < source.data['date'][i]) {
+                    plot_x.push(source.data['date'][i])
+                    plot_y.push(source.data[metric.value][i])
+                    yesterdate = source.data['date'][i]
+                    nDays += 1
+                }
+                else { // aggregate values with the same date
+                    plot_y[nDays] += source.data[metric.value][i]
+                }
             }
         }
-        
+
+
         // Extra transformations
-        if (me_1.value === 'difference') { // Assumes the input is cumulative
-            for (let i=index.length-1; i > 0; i--) {
-                metric_1[i] -= metric_1[i-1]
-            }
-        }
-        if (me_2.value === 'difference') { // Assumes the input is cumulative
-            for (let i=index.length-1; i > 0; i--) {
-                metric_2[i] -= metric_2[i-1]
+        if (method.value === 'difference') {
+            // Converts from raw cumulative data
+            for (let i=plot_x.length-1; i > 0; i--) {
+                plot_y[i] -= plot_y[i-1]
             }
         }
         // Rolling Average (uniform backwards window (avg over last x days))
         if (avg.value > 1) {
-            for (let i=index.length-1; i > avg.value-1; i--) { // a for loop crashes :/
-                metric_1[i] = metric_1.slice(i-avg.value, i+1).reduce((a, b) => a + b, 0) / (avg.value+1)
-                metric_2[i] = metric_2.slice(i-avg.value, i+1).reduce((a, b) => a + b, 0) / (avg.value+1)
+            for (let i=plot_x.length-1; i > avg.value-1; i--) {
+                plot_y[i] = plot_y.slice(i-avg.value, i+1).reduce((a, b) => a + b, 0) / (avg.value+1)
             }
         }
-        
-        // update ColumnDataSource
-        CDS_plot.data['index'] = index
-        CDS_plot.data['date'] = dates
-        CDS_plot.data['metric_1'] = metric_1
-        CDS_plot.data['metric_2'] = metric_2
-        
-        CDS_plot.change.emit()
-    """)
 
-    update_menu = CustomJS(args=dict(scale=scale_menu,
-                                     state=state_menu,
-                                     county=county_menu,
-                                     CDS_full=CDS_full),
-                           code="""
-        let source = CDS_full.data
+        // update ColumnDataSource
+        plot.data['date'] = plot_x
+        plot.data['metric'] = plot_y
+        //console.log(plot_x, plot_y)
+        plot.change.emit()
+    """
+
+    js_code_menu = """
         if (scale.value == 'national') {
             state.visible = false
             county.visible = false
         }
-        if (scale.value === 'state') {
+
+        else if (scale.value === 'state') {
             state.visible = true
             county.visible = false
         }
-        if (scale.value === 'county') {
+
+        else if (scale.value === 'county') {
             state.visible = true
             county.visible = true
-            
+
             // filter the state and then unique counties
             function oneState(value, index, self) {
-                return source['state'][index] === state.value
+                return source.data['state'][index] === state.value
             }
-            
+
             function onlyUnique(value, index, self) {
                 return self.indexOf(value) === index;
             }
-            
-            let counties_in_state = source['county'].filter(oneState).filter(onlyUnique).sort()
-            
+
+            let counties_in_state = source.data['county'].filter(oneState).filter(onlyUnique).sort()
+
             if (counties_in_state.indexOf(county.value) === -1) {
                 county.value = counties_in_state[0]
             }
             county.options = counties_in_state
         }
-    """)
+    """
+
+    js_code_synchronize="""
+        scale_2.value = scale_1.value
+        state_2.value = state_1.value
+        county_2.value = county_1.value
+    """
+
+    # Plotting size parameters
+
+    aspect = 1
+    widget_height = 100
+
+    ### End shared objects
+
+
+    ### Begin plot 1
+
+    # Initial plot data
+
+    CDS_plot_1 = ColumnDataSource({'date' : df_national['date'],
+                                   'metric' : df_national[metrics[0]]})
+
+    # Widgets
+    menu_menu_1 = Select(title='menu 1', value='national', options=['national', 'state', 'county'], width=menu_width)
+    state_menu_1 = Select(title='State 1', value='Alabama', options=states, visible=False, width=menu_width)
+    county_menu_1 = Select(title='County 1', value='Abbeville', options=counties, visible=False, width=menu_width)
+    metric_1 = Select(title="Metric 1", value=metrics[0], options=metrics, sizing_mode='both')
+    method_1 = Select(title="Method 1", value='cumulative', options=['cumulative', 'difference'], sizing_mode='stretch_both')
+
+    # Construct callback functions
+    update_menu_1 = CustomJS(args=dict(scale=scale_menu_1,
+                                       state=state_menu_1,
+                                       county=county_menu_1,
+                                       source=CDS_full,
+                                      ),
+                             code=js_code_menu,
+                            )
+    update_data_1 = CustomJS(args=dict(metric=metric_1,
+                                       method=method_1,
+                                       scale=scale_menu_1,
+                                       state=state_menu_1,
+                                       county=county_menu_1,
+                                       plot=CDS_plot_1,
+                                       source=CDS_full,
+                                       avg=roll_avg,
+                                      ),
+                             code=js_code_data,
+                            )
 
     # Callbacks
-    scale_menu.js_on_change('value', update_menu)
-    scale_menu.js_on_change('value', update_data)
+    scale_menu_1.js_on_change('value', update_menu_1)
+    state_menu_1.js_on_change('value', update_menu_1)
 
-    state_menu.js_on_change('value', update_menu)
-    state_menu.js_on_change('value', update_data)
+    scale_menu_1.js_on_change('value', update_data_1)
+    state_menu_1.js_on_change('value', update_data_1)
+    county_menu_1.js_on_change('value', update_data_1)
+    metric_1.js_on_change('value', update_data_1)
+    method_1.js_on_change('value', update_data_1)
 
-    county_menu.js_on_change('value', update_data)
+    # Create plot layout
+    # linear metric 1
+    linear_1 = figure(title='COVID-19 data_1', x_axis_label='date', y_axis_label='Cases',\
+               x_axis_type="datetime", y_axis_type='linear', sizing_mode='stretch_both')
+    linear_1.line(x='date', y='metric', source=CDS_plot_1)
+    panel_linear_1 = Panel(child=linear_1, title='linear')
+    # log metric 1
+    log_1 = figure(title='COVID-19 data_1', x_axis_label='date', y_axis_label='Cases',\
+               x_axis_type="datetime", y_axis_type='log', sizing_mode='stretch_both')
+    log_1.line(x='date', y='metric', source=CDS_plot_1)
+    panel_log_1 = Panel(child=log_1, title='log')
+    # panel metric 1
+    panels_1 = [panel_linear_1, panel_log_1]
+    tabs_1 = Tabs(tabs=panels_1, aspect_ratio=aspect, sizing_mode='scale_both')
+    column_1 = layout(tabs_1,
+                      [method_1, metric_1],
+                      [scale_menu_1, state_menu_1, county_menu_1],
+                      sizing_mode='stretch_both',
+                     )
 
-    method_1.js_on_change('value', update_data)
-    method_2.js_on_change('value', update_data)
-
-    roll_avg.js_on_change('value', update_data)
+    ### End plot 1
 
 
-    # TODO: add widgets/callbacks for smoothing or looking at day-to day differences
-    # and update plot labels
+    ### Begin plot 2
+
+    # Initial plot data
+    CDS_plot_2 = ColumnDataSource({'date' : df_national['date'],
+                                   'metric' : df_national[metrics[1]]})
+
+    # Widgets
+    scale_menu_2 = Select(title='Scale 2', value='national', options=['national', 'state', 'county'], sizing_mode='stretch_both')
+    state_menu_2 = Select(title='state 2', value='Alabama', options=states, sizing_mode='stretch_both', visible=False)
+    county_menu_2 = Select(title='County 2', value='Abbeville', options=counties, sizing_mode='stretch_both', visible=False)
+    metric_2 = Select(title="Metric 2", value=metrics[1], options=metrics, sizing_mode='stretch_both')
+    method_2 = Select(title="Method 2", value='cumulative', options=['cumulative', 'difference'], sizing_mode='stretch_both')
+
+    # Construct callback functions
+    update_menu_2 = CustomJS(args=dict(scale=scale_menu_2,
+                                       state=state_menu_2,
+                                       county=county_menu_2,
+                                       source=CDS_full,
+                                      ),
+                             code=js_code_menu,
+                            )
+    update_data_2 = CustomJS(args=dict(metric=metric_2,
+                                       method=method_2,
+                                       scale=scale_menu_2,
+                                       state=state_menu_2,
+                                       county=county_menu_2,
+                                       plot=CDS_plot_2,
+                                       source=CDS_full,
+                                       avg=roll_avg,
+                                      ),
+                             code=js_code_data,
+                            )
+
+    # Callbacks
+    scale_menu_2.js_on_change('value', update_menu_2)
+    state_menu_2.js_on_change('value', update_menu_2)
+
+    scale_menu_2.js_on_change('value', update_data_2)
+    state_menu_2.js_on_change('value', update_data_2)
+    county_menu_2.js_on_change('value', update_data_2)
+    metric_2.js_on_change('value', update_data_2)
+    method_2.js_on_change('value', update_data_2)
+
+    # Create plot layout
+    # linear metric 2
+    linear_2 = figure(title='COVID-19 data_2', x_axis_label='date', y_axis_label='Deaths',\
+               x_axis_type="datetime", y_axis_type='linear', sizing_mode='stretch_both')
+    linear_2.line(x='date', y='metric', source=CDS_plot_2)
+    panel_linear_2 = Panel(child=linear_2, title='linear')
+    # log metric 2
+    log_2 = figure(title='COVID-19 data_2', x_axis_label='date', y_axis_label='Deaths',\
+            x_axis_type="datetime", y_axis_type='log', sizing_mode='stretch_both')
+    log_2.line(x='date', y='metric', source=CDS_plot_2)
+    panel_log_2 = Panel(child=log_2, title='log')
+    # panel metric 2
+    panels_2 = [panel_linear_2, panel_log_2]
+    tabs_2 = Tabs(tabs=panels_2, aspect_ratio=aspect, sizing_mode='scale_both')
+    column_2 = layout(tabs_2,
+                      [method_2, metric_2],
+                      [scale_menu_2, state_menu_2, county_menu_2],
+                      sizing_mode='stretch_both',
+                     )
+
+    ### End plot 2
+
+
+    # Shared Callbacks
+    roll_avg.js_on_change('value', update_data_1)
+    roll_avg.js_on_change('value', update_data_2)
+    button.js_on_click(CustomJS(args=dict(scale_1=scale_menu_1,
+                                            state_1=state_menu_1,
+                                            county_1=county_menu_1,
+                                            scale_2=scale_menu_2,
+                                            state_2=state_menu_2,
+                                            county_2=county_menu_2,
+                                           ),
+                                  code=js_code_synchronize,
+                                 )
+                        )
 
     # Display
-    layout = column(row(tabs_p, tabs_q), row(metric_1, metric_2), roll_avg, row(method_1, method_2), row(scale_menu, state_menu, county_menu))
+    display = layout([column_1, column_2],
+                     [roll_avg, button],
+                     sizing_mode='stretch_both',
+                    )
 
-    show(layout)
+    show(display)
+    return
+
+
+def main():
+    make_plots(*import_data())
+    return
 
 if __name__=='__main__':
     main()
