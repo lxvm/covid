@@ -11,9 +11,10 @@ from datetime import datetime
 from urllib.request import urlopen
 
 from bokeh.models import ColumnDataSource, CustomJS, Select, Slider, Button, Div
+from bokeh.models.formatters import FuncTickFormatter
 from bokeh.models.widgets import Panel, Tabs
-from bokeh.layouts import layout, gridplot
 from bokeh.plotting import figure, show
+from bokeh.layouts import layout, gridplot
 from bokeh.io import output_file
 
 def import_data():
@@ -83,6 +84,39 @@ def make_plots(df, df_national):
     roll_avg = Slider(title='Rolling Average', value=1, start=1, end=14, step=1, sizing_mode='stretch_width')
 
     # Shared Callback code
+    js_code_menu = """
+        if (scale.value == 'national') {
+            state.visible = false
+            county.visible = false
+        }
+
+        else if (scale.value === 'state') {
+            state.visible = true
+            county.visible = false
+        }
+
+        else if (scale.value === 'county') {
+            state.visible = true
+            county.visible = true
+
+            // filter the state and then unique counties
+            function oneState(value, index, self) {
+                return source.data['state'][index] === state.value
+            }
+
+            function onlyUnique(value, index, self) {
+                return self.indexOf(value) === index;
+            }
+
+            let counties_in_state = source.data['county'].filter(oneState).filter(onlyUnique).sort()
+
+            if (counties_in_state.indexOf(county.value) === -1) {
+                county.value = counties_in_state[0]
+            }
+            county.options = counties_in_state
+        };
+    """
+
     js_code_data = """
         let plot_x = []
         let plot_y = []
@@ -138,51 +172,50 @@ def make_plots(df, df_national):
         plot_z = plot_y.slice()
         plot_z.pop()
         plot_z.unshift(0)
-        console.log(plot_x.length, plot_y.length, plot_z.length)
+
         // update ColumnDataSource
         plot.data['date'] = plot_x
         plot.data['metric'] = plot_y
         plot.data['cobweb'] = plot_z
-        plot.change.emit()
+        plot.change.emit();
     """
 
-    js_code_menu = """
-        if (scale.value == 'national') {
-            state.visible = false
-            county.visible = false
-        }
+    js_code_label="""
+    if (scale.value === 'national') {
+        linear_title.text = 'NYT COVID-19 data: National'
+        log_title.text = 'NYT COVID-19 data: National'
+        cobweb_title.text = 'NYT COVID-19 data: National'
+    }
+    else if (scale.value === 'state') {
+        linear_title.text = 'NYT COVID-19 data: State: '+ state.value
+        log_title.text = 'NYT COVID-19 data: State: ' + state.value
+        cobweb_title.text = 'NYT COVID-19 data: State: ' + state.value
+    }
+    else { // if (scale.value === 'county') {
+        linear_title.text = 'NYT COVID-19 data: County: ' + county.value
+        log_title.text = 'NYT COVID-19 data: County: ' + county.value
+        cobweb_title.text = 'NYT COVID-19 data: County: ' + state.value 
+    }
 
-        else if (scale.value === 'state') {
-            state.visible = true
-            county.visible = false
-        }
-
-        else if (scale.value === 'county') {
-            state.visible = true
-            county.visible = true
-
-            // filter the state and then unique counties
-            function oneState(value, index, self) {
-                return source.data['state'][index] === state.value
-            }
-
-            function onlyUnique(value, index, self) {
-                return self.indexOf(value) === index;
-            }
-
-            let counties_in_state = source.data['county'].filter(oneState).filter(onlyUnique).sort()
-
-            if (counties_in_state.indexOf(county.value) === -1) {
-                county.value = counties_in_state[0]
-            }
-            county.options = counties_in_state
-        }
+    let method_name =''
+    if (method.value === 'difference') {
+        method_name = 'New '
+    }
+    else { // if (method.value === 'cumulative')
+        method_name = 'Cumulative '
+    }
+    linear_y.axis_label = method_name + metric.value
+    log_y.axis_label = method_name + metric.value
+    cobweb_x.axis_label = method_name + metric.value + ' today'
+    cobweb_y.axis_label = method_name + metric.value + ' tomorrow'
+    ;
     """
 
     js_code_synchronize="""
         scale_2.value = scale_1.value
         state_2.value = state_1.value
         county_2.value = county_1.value
+    ;
     """
 
     ### End shared objects
@@ -203,6 +236,39 @@ def make_plots(df, df_national):
     county_menu_1 = Select(title='County 1', value=counties[0], options=counties, visible=False)
     metric_1 = Select(title="Metric 1", value=metrics[0], options=metrics)
     method_1 = Select(title="Method 1", value='cumulative', options=['cumulative', 'difference'])
+    widget_list_1 = [scale_menu_1,
+                     state_menu_1,
+                     county_menu_1,
+                     metric_1,
+                     method_1,
+                    ]
+    widgets_1 = layout([[method_1, metric_1],
+                 [scale_menu_1, state_menu_1, county_menu_1],])
+
+    # Create plot layout
+    # linear metric 1
+    linear_1 = figure(title='NYT COVID-19 data: National', x_axis_label='Date', y_axis_label='Cumulative cases',\
+               x_axis_type='datetime', y_axis_type='linear')
+    linear_1.yaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
+    linear_1.line(x='date', y='metric', source=CDS_plot_1)
+    panel_linear_1 = Panel(child=linear_1, title='linear')
+    # log metric 1
+    log_1 = figure(title='NYT COVID-19 data: National', x_axis_label='Date', y_axis_label='Cumulative cases',\
+            x_axis_type='datetime', y_axis_type='log')
+    log_1.line(x='date', y='metric', source=CDS_plot_1)
+    panel_log_1 = Panel(child=log_1, title='log')
+    # cobweb metric 1
+    cobweb_1 = figure(title='NYT COVID-19 data: National', x_axis_label='Cumulative cases today', y_axis_label='Cumulative cases tomorrow',\
+            x_axis_type='linear', y_axis_type='linear')
+    cobweb_1.xaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
+    cobweb_1.yaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
+    cobweb_1.step(x='cobweb', y='metric', source=CDS_plot_1)
+    cobweb_1.line(x='cobweb', y='cobweb', source=CDS_plot_1, line_color='red')
+    panel_cobweb_1 = Panel(child=cobweb_1, title='cobweb')
+    # panel metric 1
+    panels_1 = [panel_linear_1, panel_log_1, panel_cobweb_1,]
+    tabs_1 = Tabs(tabs=panels_1)
+    plot_list_1 = [linear_1, log_1, cobweb_1,]
 
     # Construct callback functions
     update_menu_1 = CustomJS(args=dict(scale=scale_menu_1,
@@ -210,8 +276,7 @@ def make_plots(df, df_national):
                                        county=county_menu_1,
                                        source=CDS_full,
                                       ),
-                             code=js_code_menu,
-                            )
+                             code=js_code_menu)
     update_data_1 = CustomJS(args=dict(metric=metric_1,
                                        method=method_1,
                                        scale=scale_menu_1,
@@ -220,9 +285,17 @@ def make_plots(df, df_national):
                                        plot=CDS_plot_1,
                                        source=CDS_full,
                                        avg=roll_avg,
+                                       linear_title=linear_1.title,
+                                       linear_x=linear_1.xaxis[0],
+                                       linear_y=linear_1.yaxis[0],
+                                       log_title=log_1.title,
+                                       log_x=log_1.xaxis[0],
+                                       log_y=log_1.yaxis[0],
+                                       cobweb_title=cobweb_1.title,
+                                       cobweb_x=cobweb_1.xaxis[0],
+                                       cobweb_y=cobweb_1.yaxis[0],
                                       ),
-                             code=js_code_data,
-                            )
+                             code=js_code_data+js_code_label)
 
     # Callbacks
     scale_menu_1.js_on_change('value', update_menu_1)
@@ -233,38 +306,6 @@ def make_plots(df, df_national):
     county_menu_1.js_on_change('value', update_data_1)
     metric_1.js_on_change('value', update_data_1)
     method_1.js_on_change('value', update_data_1)
-    widget_list_1 = [scale_menu_1,
-                     state_menu_1,
-                     county_menu_1,
-                     metric_1,
-                     method_1,
-                    ]
-    widgets_1 = layout([[method_1, metric_1],
-                 [scale_menu_1, state_menu_1, county_menu_1],
-                ])
-
-    # Create plot layout
-    # linear metric 1
-    linear_1 = figure(title='COVID-19 data_1', x_axis_label='date', y_axis_label='Cases',\
-               x_axis_type='datetime', y_axis_type='linear')
-    linear_1.line(x='date', y='metric', source=CDS_plot_1)
-    panel_linear_1 = Panel(child=linear_1, title='linear')
-    # log metric 1
-    log_1 = figure(title='COVID-19 data_1', x_axis_label='date', y_axis_label='Cases',\
-            x_axis_type='datetime', y_axis_type='log')
-    log_1.line(x='date', y='metric', source=CDS_plot_1)
-    panel_log_1 = Panel(child=log_1, title='log')
-    # cobweb metric 1
-    cobweb_1 = figure(title='COVID-19 data_1', x_axis_label='date', y_axis_label='Cases',\
-            x_axis_type='linear', y_axis_type='linear')
-    cobweb_1.step(x='cobweb', y='metric', source=CDS_plot_1)
-    cobweb_1.line(x='cobweb', y='cobweb', source=CDS_plot_1, line_color='red')
-    panel_cobweb_1 = Panel(child=cobweb_1, title='cobweb')
-    # panel metric 1
-    panels_1 = [panel_linear_1, panel_log_1, panel_cobweb_1]
-    tabs_1 = Tabs(tabs=panels_1)
-    plot_list_1 = [linear_1, log_1, cobweb_1,
-                  ]
 
     ### End plot 1
 
@@ -290,8 +331,32 @@ def make_plots(df, df_national):
                      method_2,
                     ]
     widgets_2 = layout([[method_2, metric_2],
-                        [scale_menu_2, state_menu_2, county_menu_2],
-                       ])
+                        [scale_menu_2, state_menu_2, county_menu_2],])
+
+    # Create plot layout
+    # linear metric 2
+    linear_2 = figure(title='NYT COVID-19 data: National', x_axis_label='Date', y_axis_label='Cumulative deaths',\
+               x_axis_type="datetime", y_axis_type='linear')
+    linear_2.yaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
+    linear_2.line(x='date', y='metric', source=CDS_plot_2)
+    panel_linear_2 = Panel(child=linear_2, title='linear')
+    # log metric 2
+    log_2 = figure(title='NYT COVID-19 data: National', x_axis_label='Date', y_axis_label='Cumulative Deaths',\
+            x_axis_type="datetime", y_axis_type='log')
+    log_2.line(x='date', y='metric', source=CDS_plot_2)
+    panel_log_2 = Panel(child=log_2, title='log')
+    # cobweb metric 2
+    cobweb_2 = figure(title='NYT COVID-19 data: National', x_axis_label='Cumulative cases today', y_axis_label='Cumulative cases tomorrow',\
+            x_axis_type='linear', y_axis_type='linear')
+    cobweb_2.xaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
+    cobweb_2.yaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
+    cobweb_2.step(x='cobweb', y='metric', source=CDS_plot_2)
+    cobweb_2.line(x='cobweb', y='cobweb', source=CDS_plot_2, line_color='red', )
+    panel_cobweb_2 = Panel(child=cobweb_2, title='cobweb')
+    # panel metric 2
+    panels_2 = [panel_linear_2, panel_log_2, panel_cobweb_2,]
+    tabs_2 = Tabs(tabs=panels_2)
+    plot_list_2 = [linear_2, log_2, cobweb_2,]
 
     # Construct callback functions
     update_menu_2 = CustomJS(args=dict(scale=scale_menu_2,
@@ -299,8 +364,7 @@ def make_plots(df, df_national):
                                        county=county_menu_2,
                                        source=CDS_full,
                                       ),
-                             code=js_code_menu,
-                            )
+                             code=js_code_menu)
     update_data_2 = CustomJS(args=dict(metric=metric_2,
                                        method=method_2,
                                        scale=scale_menu_2,
@@ -309,9 +373,17 @@ def make_plots(df, df_national):
                                        plot=CDS_plot_2,
                                        source=CDS_full,
                                        avg=roll_avg,
+                                       linear_title=linear_2.title,
+                                       linear_x=linear_2.xaxis[0],
+                                       linear_y=linear_2.yaxis[0],
+                                       log_title=log_2.title,
+                                       log_x=log_2.xaxis[0],
+                                       log_y=log_2.yaxis[0],
+                                       cobweb_title=cobweb_2.title,
+                                       cobweb_x=cobweb_2.xaxis[0],
+                                       cobweb_y=cobweb_1.yaxis[0],
                                       ),
-                             code=js_code_data,
-                            )
+                             code=js_code_data+js_code_label)
 
     # Callbacks
     scale_menu_2.js_on_change('value', update_menu_2)
@@ -322,33 +394,6 @@ def make_plots(df, df_national):
     county_menu_2.js_on_change('value', update_data_2)
     metric_2.js_on_change('value', update_data_2)
     method_2.js_on_change('value', update_data_2)
-
-    # Create plot layout
-    # linear metric 2
-    linear_2 = figure(title='COVID-19 data_2', x_axis_label='date', y_axis_label='Deaths',\
-               x_axis_type="datetime", y_axis_type='linear')
-    linear_2.line(x='date', y='metric', source=CDS_plot_2)
-    panel_linear_2 = Panel(child=linear_2, title='linear')
-    # log metric 2
-    log_2 = figure(title='COVID-19 data_2', x_axis_label='date', y_axis_label='Deaths',\
-            x_axis_type="datetime", y_axis_type='log')
-    log_2.line(x='date', y='metric', source=CDS_plot_2)
-    panel_log_2 = Panel(child=log_2, title='log')
-    # cobweb metric 2
-    cobweb_2 = figure(title='COVID-19 data_2', x_axis_label='Cases today', y_axis_label='Cases tomorrow',\
-            x_axis_type='linear', y_axis_type='linear')
-    cobweb_2.step(x='cobweb', y='metric', source=CDS_plot_2)
-    cobweb_2.line(x='cobweb', y='cobweb', source=CDS_plot_2, line_color='red', )
-    panel_cobweb_2 = Panel(child=cobweb_2, title='cobweb')
-    # panel metric 2
-    panels_2 = [panel_linear_2, panel_log_2, panel_cobweb_2]
-    tabs_2 = Tabs(tabs=panels_2)
-
-    plot_list_2 = [linear_2,
-                   log_2,
-                   cobweb_2,
-                  ]
-
 
     ### End plot 2
 
@@ -374,8 +419,9 @@ def make_plots(df, df_national):
         e.sizing_mode = 'fixed'
     for e in plot_list_1 + plot_list_2:
         e.sizing_mode = 'scale_both'
+        e.min_border_bottom = 80
     for e in [tabs_1, tabs_2]:
-        e.aspect_ratio = 1.1
+        e.aspect_ratio = 1
         e.sizing_mode = 'scale_both'
     for e in [widgets_1, widgets_2]:
         e.sizing_mode = 'stretch_both'
