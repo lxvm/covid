@@ -10,7 +10,7 @@ from os.path import exists
 from datetime import datetime
 from urllib.request import urlopen
 
-from bokeh.models import ColumnDataSource, CustomJS, Select, Slider, Button, Div
+from bokeh.models import ColumnDataSource, CustomJS, Select, Slider, Button
 from bokeh.models.formatters import FuncTickFormatter
 from bokeh.models.widgets import Panel, Tabs
 from bokeh.plotting import figure, show
