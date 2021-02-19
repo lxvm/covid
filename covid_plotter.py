@@ -84,7 +84,7 @@ def make_plots(df, df_national):
 
     # Shared Callback code
     js_code_menu = """
-        if (scale.value == 'national') {
+        if (scale.value === 'national') {
             state.visible = false
             county.visible = false
         }
