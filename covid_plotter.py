@@ -41,7 +41,6 @@ def import_data():
 
         # Populate dataframe from csv
         for i, rrow in enumerate(data):
-
             for j, col in enumerate(rrow):
                 if colnames[j] in filter:
                     key = colnames[j]
