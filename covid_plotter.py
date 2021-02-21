@@ -380,7 +380,7 @@ def make_plots(df, df_national):
                                        log_y=log_2.yaxis[0],
                                        cobweb_title=cobweb_2.title,
                                        cobweb_x=cobweb_2.xaxis[0],
-                                       cobweb_y=cobweb_1.yaxis[0],
+                                       cobweb_y=cobweb_2.yaxis[0],
                                       ),
                              code=js_code_data+js_code_label)
 
