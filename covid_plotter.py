@@ -4,6 +4,18 @@
 # Written by Lorenzo Van Munoz
 # Last programmed 27/02/2021
 
+USAGE = """
+covid_plotter.py [OPTIONS]
+
+DESCRIPTION:
+    Uses bokeh to make a covid dashboard from latest NYT data
+    Also saves the data to a cache
+
+OPTIONS:
+    update      updates the cache if more than a day old, then builds dashboard
+    -h, help    show this message and exit
+"""
+
 import os
 import sys
 import csv
@@ -462,8 +474,11 @@ def make_plots(df, df_national):
 
 def main(update=None):
     if len(sys.argv) > 1:
-       if 'update' in sys.argv[1]:
+        if 'update' in sys.argv[1]:
             update = True
+        elif sys.argv[1] == '-h' or 'help' in sys.argv[1]:
+            print(USAGE)
+            return
     make_plots(*import_data(update))
     return
 
