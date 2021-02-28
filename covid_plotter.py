@@ -2,11 +2,13 @@
 
 # covid_plotter.py
 # Written by Lorenzo Van Munoz
-# Last programmed 18/02/2021
+# Last programmed 27/02/2021
 
-from csv import reader, writer
+import os
+import sys
+import csv
+import time
 from codecs import iterdecode
-from os.path import exists
 from datetime import datetime
 from urllib.request import urlopen
 
@@ -17,19 +19,40 @@ from bokeh.plotting import figure, show
 from bokeh.layouts import layout, gridplot
 from bokeh.io import output_file
 
-def import_data():
+def import_data(update=None):
     output_file('covid_static.html')
     url = 'http://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'
     cache = '/home/lxvm/repos/covid/covid_data.csv'
 
-    if not exists(cache):
+    def cache_dataset():
         with urlopen(url) as html, open(cache, 'w', newline='') as csvfile:
             html = iterdecode(html, 'utf-8')
-            data = reader(html)
-            writer(csvfile).writerows(data)
+            data = csv.reader(html)
+            csv.writer(csvfile).writerows(data)
 
+    # Save dataset to cache because it is large
+    if os.path.exists(cache):
+        # Don't import new data unless 1 day/86400 seconds have passed
+        # Since COVID numbers are only update daily
+        print('Cache found')
+        if update and ((time.time() - os.path.getmtime(cache)) > 86400):
+            print('Updating cache')
+            cache_dataset()
+        elif update:
+            print('Data already up to date')
+        print('Using cached data')
+    else:
+        if os.access(os.path.dirname(cache), os.W_OK):
+            print('Saving data to cache located at ' + cache)
+            cache_dataset()
+        else:
+            print('Please edit the cache directory in the script')
+            raise PermissionError(cache + ' is not writeable')
+
+    # Read in dataset from cache
+    print('Reading cache')
     with open(cache, 'r') as csvfile:
-        data = reader(csvfile)
+        data = csv.reader(csvfile)
         # We have imported the rows in the csv as lists
         # and need to wrangle the columns into dictionaries
         # for use in a ColumnDataSource
@@ -68,6 +91,7 @@ def import_data():
 
 
 def make_plots(df, df_national):
+    print('Making webpage')
     ### Begin Shared objects
 
     # Column Data Source (which can be filtered later)
@@ -436,8 +460,11 @@ def make_plots(df, df_national):
     return
 
 
-def main():
-    make_plots(*import_data())
+def main(update=None):
+    if len(sys.argv) > 1:
+       if 'update' in sys.argv[1]:
+            update = True
+    make_plots(*import_data(update))
     return
 
 if __name__=='__main__':
