@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+
 """
 Uses Bokeh to make an interactive, static html
 document displaying the latest NYT covid-19 data.
@@ -10,7 +11,7 @@ Last updated 16/03/2021
 
 
 COMMAND_LINE_USAGE = """
-covid_plotter.py [OPTIONS]
+python3 covid_plotter [OPTIONS]
 
 DESCRIPTION:
     Uses Bokeh to make a covid-19 dashboard from latest NYT data.
@@ -33,7 +34,7 @@ from bokeh.models import ColumnDataSource, CustomJS, Select, Slider, Button
 from bokeh.models.formatters import FuncTickFormatter
 from bokeh.models.widgets import Panel, Tabs
 from bokeh.plotting import figure, save
-from bokeh.layouts import layout, gridplot
+from bokeh.layouts import grid
 from bokeh.io import output_file
 
 
@@ -337,7 +338,7 @@ def make_plots(df_full, df_plot, output_path=OUTPUT_FILE):
     metric_menus = []
     method_menus = []
     widget_lists = []
-    layout_lists = []
+    widget_layouts = []
 
     linear_plots = []
     log_plots = []
@@ -416,13 +417,11 @@ def make_plots(df_full, df_plot, output_path=OUTPUT_FILE):
             method_menus[i],
             ]
         )
-        layout_lists.append(
-            layout(
-                [
-                [method_menus[i], metric_menus[i]],
-                [scale_menus[i], state_menus[i], county_menus[i]],
-                ]
-            )
+        widget_layouts.append(
+            [
+            [method_menus[i], metric_menus[i]],
+            [scale_menus[i], state_menus[i], county_menus[i]],
+            ]
         )
 
         # Create plot layout
@@ -577,18 +576,17 @@ def make_plots(df_full, df_plot, output_path=OUTPUT_FILE):
             e.min_border_bottom = 80
     for e in tab_lists:
         e.aspect_ratio = 1
-        e.sizing_mode = 'scale_both'
-    for e in layout_lists:
-        e.sizing_mode = 'stretch_both'
+        e.sizing_mode = 'scale_height'
     for e in [button, roll_avg]:
         e.sizing_mode = 'stretch_width'
     # Display arrangement
-    display = layout(
+    display = grid(
         [
         tab_lists,
         [button, roll_avg],
-        layout_lists,
+        widget_layouts,
         ],
+        sizing_mode='stretch_both',
     )
 
     print('Saving output to html')
