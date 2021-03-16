@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 
-# covid_plotter.py
-# Written by Lorenzo Van Munoz
-# Last programmed 27/02/2021
+"""
+Uses Bokeh to make an interactive, static html
+document displaying the latest NYT covid-19 data.
 
-USAGE = """
+Written by Lorenzo Van Muñoz
+Last updated 16/03/2021
+"""
+
+
+COMMAND_LINE_USAGE = """
 covid_plotter.py [OPTIONS]
 
 DESCRIPTION:
-    Uses bokeh to make a covid dashboard from latest NYT data
-    Also saves the data to a cache
+    Uses Bokeh to make a covid-19 dashboard from latest NYT data.
 
 OPTIONS:
-    update      updates the cache if more than a day old, then builds dashboard
+    update      updates cached dataset if older than 1 day, then dashboard
     -h, help    show this message and exit
 """
+
 
 import os
 import sys
@@ -27,43 +32,82 @@ from urllib.request import urlopen
 from bokeh.models import ColumnDataSource, CustomJS, Select, Slider, Button
 from bokeh.models.formatters import FuncTickFormatter
 from bokeh.models.widgets import Panel, Tabs
-from bokeh.plotting import figure, show
+from bokeh.plotting import figure, save
 from bokeh.layouts import layout, gridplot
 from bokeh.io import output_file
 
-def import_data(update=None):
-    output_file('covid_static.html')
-    url = 'http://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'
-    cache = '/home/lxvm/repos/covid/covid_data.csv'
 
-    def cache_dataset():
-        with urlopen(url) as html, open(cache, 'w', newline='') as csvfile:
-            html = iterdecode(html, 'utf-8')
-            data = csv.reader(html)
-            csv.writer(csvfile).writerows(data)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_FILE = SCRIPT_DIR + '/covid_static.html'
+CACHE_FILE = SCRIPT_DIR + '/covid_data.csv'
+DATA_URL = 'http://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'
+
+
+def download_data(data_url=DATA_URL, cache_file=CACHE_FILE):
+    """Downloads the csv file from DATA_URL to CACHE_FILE.
+
+    Keyword arguments:
+    data_url -- str -- the url to the NYT covid-19 data repo (default DATA_URL)
+    cache_file -- str -- a path to save the cache (default CACHE_FILE)
+    """
+
+    with urlopen(data_url) as html, open(cache_file, 'w', newline='') as csvfile:
+        html = iterdecode(html, 'utf-8')
+        data = csv.reader(html)
+        csv.writer(csvfile).writerows(data)
+    return
+
+
+def import_data(update=None, cache_file=CACHE_FILE, script_dir=SCRIPT_DIR):
+    """Creates or updates the cached dataset.
+
+    By default uses an existing cache.
+
+    Keyword arguments:
+    update -- bool -- only replaces cache if older than 1 day (default: None)
+    cache_file -- str -- a path to save the cache (default: CACHE_FILE)
+    script_dir -- str -- the current directory of the script (default: SCRIPT_DIR)
+    """
 
     # Save dataset to cache because it is large
-    if os.path.exists(cache):
+    if os.path.exists(cache_file):
         # Don't import new data unless 1 day/86400 seconds have passed
         # Since COVID numbers are only update daily
         print('Cache found')
-        if update and ((time.time() - os.path.getmtime(cache)) > 86400):
+        if update and ((time.time() - os.path.getmtime(cache_file)) > 86400):
             print('Updating cache')
-            cache_dataset()
+            download_data()
         elif update:
             print('Data already up to date')
         print('Using cached data')
     else:
-        if os.access(os.path.dirname(cache), os.W_OK):
-            print('Saving data to cache located at ' + cache)
-            cache_dataset()
+        if os.access(script_dir, os.W_OK):
+            print('Saving data to cache located at ' + cache_file)
+            download_data()
         else:
             print('Please edit the cache directory in the script')
-            raise PermissionError(cache + ' is not writeable')
+            raise PermissionError(script_dir + ' is not writeable')
+    return
 
-    # Read in dataset from cache
+
+def import_cache(cache_file=CACHE_FILE):
+    """Reads cached NYT covid-19 dataset into a tuple of dictionaries.
+
+    The first dictionary contains the entire dataset.
+    The second dictionary contains a plottable subset.
+    This plottable subset is the national aggregates.
+    A plottable subset has the form of time series data.
+
+    Keyword arguments:
+    cache_file -- str -- a path to read the cache (default: CACHE_FILE)
+
+    Returns:
+    tuple -- (dict, dict) -- the full and plottable datasets, respectively
+    """
+
     print('Reading cache')
-    with open(cache, 'r') as csvfile:
+    # Read in dataset from cache
+    with open(cache_file, 'r') as csvfile:
         data = csv.reader(csvfile)
         # We have imported the rows in the csv as lists
         # and need to wrangle the columns into dictionaries
@@ -102,12 +146,25 @@ def import_data(update=None):
     return (df, df_national)
 
 
-def make_plots(df, df_national):
-    print('Making webpage')
+def make_plots(df_full, df_plot, output_path=OUTPUT_FILE):
+    """Builds the plot dashboard and saves it to html.
+
+    Uses the Bokeh package to create the plots in the static html output.
+    Client-side html interactivity is provided by Bokeh's Javascript callbacks.
+
+    Required arguments:
+    df_full -- dict -- containing the whole NYT dataset
+    df_plot -- dict -- containing a plottable subset (e.g. national aggregates)
+
+    Keyword arguments:
+    output_path -- str -- a path to a html file to write to (default: OUTPUT_FILE)
+    """
+
+    print('Building plots')
     ### Begin Shared objects
 
     # Column Data Source (which can be filtered later)
-    CDS_full = ColumnDataSource(df)
+    CDS_full = ColumnDataSource(df_full)
 
     # Shared options
     states = sorted(list(set(CDS_full.data['state'])))
@@ -188,7 +245,7 @@ def make_plots(df, df_national):
 
 
         // Extra transformations (edge cases are the first few days)
-        // Except for edge cases, you can show that the order of 
+        // Except for edge cases, you can show that the order of
         // difference and average doesn't matter
         if (method.value === 'difference') {
             // Converts from raw cumulative data
@@ -229,7 +286,7 @@ def make_plots(df, df_national):
     else { // if (scale.value === 'county') {
         linear_title.text = 'NYT COVID-19 data: County: ' + county.value
         log_title.text = 'NYT COVID-19 data: County: ' + county.value
-        cobweb_title.text = 'NYT COVID-19 data: County: ' + state.value 
+        cobweb_title.text = 'NYT COVID-19 data: County: ' + state.value
     }
 
     let method_name =''
@@ -256,230 +313,298 @@ def make_plots(df, df_national):
     ### End shared objects
 
 
-    ### Begin plot 1
+    ### Begin combined plots
 
-    # Initial plot data
+    # Create lists indexed by plot
 
-    CDS_plot_1 = ColumnDataSource({'date' : df_national['date'],
-                                   'metric' : df_national[metrics[0]],
-                                   'cobweb' : [0] + df_national[metrics[0]][:-1],
-                                 })
+    CDS_plots = []
 
-    # Widgets
-    scale_menu_1 = Select(title='Scale 1', value='national', options=['national', 'state', 'county'])
-    state_menu_1 = Select(title='State 1', value=states[0], options=states, visible=False)
-    county_menu_1 = Select(title='County 1', value=counties[0], options=counties, visible=False)
-    metric_1 = Select(title="Metric 1", value=metrics[0], options=metrics)
-    method_1 = Select(title="Method 1", value='cumulative', options=['cumulative', 'difference'])
-    widget_list_1 = [scale_menu_1,
-                     state_menu_1,
-                     county_menu_1,
-                     metric_1,
-                     method_1,
-                    ]
-    widgets_1 = layout([[method_1, metric_1],
-                 [scale_menu_1, state_menu_1, county_menu_1],])
+    scale_menus = []
+    state_menus = []
+    county_menus = []
+    metric_menus = []
+    method_menus = []
+    widget_lists = []
+    layout_lists = []
 
-    # Create plot layout
-    # linear metric 1
-    linear_1 = figure(title='NYT COVID-19 data: National', x_axis_label='Date', y_axis_label='Cumulative cases',\
-               x_axis_type='datetime', y_axis_type='linear')
-    linear_1.yaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
-    linear_1.line(x='date', y='metric', source=CDS_plot_1)
-    panel_linear_1 = Panel(child=linear_1, title='linear')
-    # log metric 1
-    log_1 = figure(title='NYT COVID-19 data: National', x_axis_label='Date', y_axis_label='Cumulative cases',\
-            x_axis_type='datetime', y_axis_type='log')
-    log_1.line(x='date', y='metric', source=CDS_plot_1)
-    panel_log_1 = Panel(child=log_1, title='log')
-    # cobweb metric 1
-    cobweb_1 = figure(title='NYT COVID-19 data: National', x_axis_label='Cumulative cases today', y_axis_label='Cumulative cases tomorrow',\
-            x_axis_type='linear', y_axis_type='linear')
-    cobweb_1.xaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
-    cobweb_1.yaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
-    cobweb_1.step(x='cobweb', y='metric', source=CDS_plot_1)
-    cobweb_1.line(x='cobweb', y='cobweb', source=CDS_plot_1, line_color='red')
-    panel_cobweb_1 = Panel(child=cobweb_1, title='cobweb')
-    # panel metric 1
-    panels_1 = [panel_linear_1, panel_log_1, panel_cobweb_1,]
-    tabs_1 = Tabs(tabs=panels_1)
-    plot_list_1 = [linear_1, log_1, cobweb_1,]
+    linear_plots = []
+    log_plots = []
+    cobweb_plots = []
+    linear_panels = []
+    log_panels = []
+    cobweb_panels = []
+    plot_lists = []
+    panel_lists = []
+    tab_lists = []
 
-    # Construct callback functions
-    update_menu_1 = CustomJS(args=dict(scale=scale_menu_1,
-                                       state=state_menu_1,
-                                       county=county_menu_1,
-                                       source=CDS_full,
-                                      ),
-                             code=js_code_menu)
-    update_data_1 = CustomJS(args=dict(metric=metric_1,
-                                       method=method_1,
-                                       scale=scale_menu_1,
-                                       state=state_menu_1,
-                                       county=county_menu_1,
-                                       plot=CDS_plot_1,
-                                       source=CDS_full,
-                                       avg=roll_avg,
-                                       linear_title=linear_1.title,
-                                       linear_x=linear_1.xaxis[0],
-                                       linear_y=linear_1.yaxis[0],
-                                       log_title=log_1.title,
-                                       log_x=log_1.xaxis[0],
-                                       log_y=log_1.yaxis[0],
-                                       cobweb_title=cobweb_1.title,
-                                       cobweb_x=cobweb_1.xaxis[0],
-                                       cobweb_y=cobweb_1.yaxis[0],
-                                      ),
-                             code=js_code_data+js_code_label)
+    update_menus = []
+    update_datas = []
 
-    # Callbacks
-    scale_menu_1.js_on_change('value', update_menu_1)
-    state_menu_1.js_on_change('value', update_menu_1)
+    # Create a plot for the desired number of plots
+    N = 2 # If N > 2, the js_code_synchronize piece is affected
+    for i in range(N):
 
-    scale_menu_1.js_on_change('value', update_data_1)
-    state_menu_1.js_on_change('value', update_data_1)
-    county_menu_1.js_on_change('value', update_data_1)
-    metric_1.js_on_change('value', update_data_1)
-    method_1.js_on_change('value', update_data_1)
+        # Initial plot data
 
-    ### End plot 1
+        CDS_plots.append(
+            ColumnDataSource(
+                {
+                'date' : df_plot['date'],
+                'metric' : df_plot[metrics[i]],
+                'cobweb' : [0] + df_plot[metrics[i]][:-1],
+                }
+            )
+        )
+
+        # Widgets
+
+        scale_menus.append(
+            Select(
+                title='Scale ' + str(i + 1),
+                value='national',
+                options=['national', 'state', 'county'],
+            )
+        )
+        state_menus.append(
+            Select(
+                title='State ' + str(i + 1),
+                value=states[0],
+                options=states,
+                visible=False,
+            )
+        )
+        county_menus.append(
+            Select(
+                title='County ' + str(i + 1),
+                value=counties[0],
+                options=counties,
+                visible=False,
+            )
+        )
+        metric_menus.append(
+            Select(
+                title="Metric " + str(i + 1),
+                value=metrics[i],
+                options=metrics,
+            )
+        )
+        method_menus.append(
+            Select(
+                title="Method " + str(i + 1),
+                value='cumulative',
+                options=['cumulative', 'difference'],
+            )
+        )
+        widget_lists.append(
+            [
+            scale_menus[i],
+            state_menus[i],
+            county_menus[i],
+            metric_menus[i],
+            method_menus[i],
+            ]
+        )
+        layout_lists.append(
+            layout(
+                [
+                [method_menus[i], metric_menus[i]],
+                [scale_menus[i], state_menus[i], county_menus[i]],
+                ]
+            )
+        )
+
+        # Create plot layout
+        # linear plot
+        linear_plots.append(
+            figure(
+                title='NYT COVID-19 data: National',
+                x_axis_label='Date',
+                y_axis_label='Cumulative cases',
+                x_axis_type='datetime',
+                y_axis_type='linear',
+            )
+        )
+        linear_plots[i].yaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
+        linear_plots[i].line(x='date', y='metric', source=CDS_plots[i])
+        linear_panels.append(
+            Panel(
+                child=linear_plots[i],
+                title='linear',
+            )
+        )
+        # log plot
+        log_plots.append(
+            figure(
+                title='NYT COVID-19 data: National',
+                x_axis_label='Date',
+                y_axis_label='Cumulative cases',
+                x_axis_type='datetime',
+                y_axis_type='log',
+            )
+        )
+        log_plots[i].line(x='date', y='metric', source=CDS_plots[i])
+        log_panels.append(
+            Panel(
+                child=log_plots[i],
+                title='log',
+            )
+        )
+        # cobweb plot
+        cobweb_plots.append(
+            figure(
+                title='NYT COVID-19 data: National',
+                x_axis_label='Cumulative cases today',
+                y_axis_label='Cumulative cases tomorrow',
+                x_axis_type='linear',
+                y_axis_type='linear',
+            )
+        )
+        cobweb_plots[i].xaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
+        cobweb_plots[i].yaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
+        cobweb_plots[i].step(x='cobweb', y='metric', source=CDS_plots[i])
+        cobweb_plots[i].line(x='cobweb', y='cobweb', source=CDS_plots[i], line_color='red')
+        cobweb_panels.append(
+            Panel(
+                child=cobweb_plots[i],
+                title='cobweb',
+            )
+        )
+        # collect plots, panels, tabs
+        plot_lists.append(
+            [
+            linear_plots[i],
+            log_plots[i],
+            cobweb_plots[i],
+            ]
+        )
+        panel_lists.append(
+            [
+            linear_panels[i],
+            log_panels[i],
+            cobweb_panels[i],
+            ]
+        )
+        tab_lists.append(
+            Tabs(tabs=panel_lists[i])
+        )
+
+        # Construct callback functions
+        update_menus.append(
+            CustomJS(
+                args=dict(
+                    scale=scale_menus[i],
+                    state=state_menus[i],
+                    county=county_menus[i],
+                    source=CDS_full,
+                ),
+                code=js_code_menu
+            )
+        )
+        update_datas.append(
+            CustomJS(
+                args=dict(
+                    metric=metric_menus[i],
+                    method=method_menus[i],
+                    scale=scale_menus[i],
+                    state=state_menus[i],
+                    county=county_menus[i],
+                    plot=CDS_plots[i],
+                    source=CDS_full,
+                    avg=roll_avg,
+                    linear_title=linear_plots[i].title,
+                    linear_x=linear_plots[i].xaxis[0],
+                    linear_y=linear_plots[i].yaxis[0],
+                    log_title=log_plots[i].title,
+                    log_x=log_plots[i].xaxis[0],
+                    log_y=log_plots[i].yaxis[0],
+                    cobweb_title=cobweb_plots[i].title,
+                    cobweb_x=cobweb_plots[i].xaxis[0],
+                    cobweb_y=cobweb_plots[i].yaxis[0],
+                ),
+                code=js_code_data+js_code_label
+            )
+        )
+
+        # Callbacks
+        scale_menus[i].js_on_change('value', update_menus[i])
+        state_menus[i].js_on_change('value', update_menus[i])
+
+        scale_menus[i].js_on_change('value', update_datas[i])
+        state_menus[i].js_on_change('value', update_datas[i])
+        county_menus[i].js_on_change('value', update_datas[i])
+        metric_menus[i].js_on_change('value', update_datas[i])
+        method_menus[i].js_on_change('value', update_datas[i])
 
 
-    ### Begin plot 2
-
-    # Initial plot data
-    CDS_plot_2 = ColumnDataSource({'date' : df_national['date'],
-                                   'metric' : df_national[metrics[1]],
-                                   'cobweb' : [0] + df_national[metrics[1]][:-1],
-                                  })
-
-    # Widgets
-    scale_menu_2 = Select(title='Scale 2', value='national', options=['national', 'state', 'county'])
-    state_menu_2 = Select(title='State 2', value=states[0], options=states, visible=False)
-    county_menu_2 = Select(title='County 2', value=counties[0], options=counties, visible=False)
-    metric_2 = Select(title="Metric 2", value=metrics[1], options=metrics)
-    method_2 = Select(title="Method 2", value='cumulative', options=['cumulative', 'difference'])
-    widget_list_2 = [scale_menu_2,
-                     state_menu_2,
-                     county_menu_2,
-                     metric_2,
-                     method_2,
-                    ]
-    widgets_2 = layout([[method_2, metric_2],
-                        [scale_menu_2, state_menu_2, county_menu_2],])
-
-    # Create plot layout
-    # linear metric 2
-    linear_2 = figure(title='NYT COVID-19 data: National', x_axis_label='Date', y_axis_label='Cumulative deaths',\
-               x_axis_type="datetime", y_axis_type='linear')
-    linear_2.yaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
-    linear_2.line(x='date', y='metric', source=CDS_plot_2)
-    panel_linear_2 = Panel(child=linear_2, title='linear')
-    # log metric 2
-    log_2 = figure(title='NYT COVID-19 data: National', x_axis_label='Date', y_axis_label='Cumulative Deaths',\
-            x_axis_type="datetime", y_axis_type='log')
-    log_2.line(x='date', y='metric', source=CDS_plot_2)
-    panel_log_2 = Panel(child=log_2, title='log')
-    # cobweb metric 2
-    cobweb_2 = figure(title='NYT COVID-19 data: National', x_axis_label='Cumulative cases today', y_axis_label='Cumulative cases tomorrow',\
-            x_axis_type='linear', y_axis_type='linear')
-    cobweb_2.xaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
-    cobweb_2.yaxis.formatter = FuncTickFormatter(code="return tick.toExponential();")
-    cobweb_2.step(x='cobweb', y='metric', source=CDS_plot_2)
-    cobweb_2.line(x='cobweb', y='cobweb', source=CDS_plot_2, line_color='red', )
-    panel_cobweb_2 = Panel(child=cobweb_2, title='cobweb')
-    # panel metric 2
-    panels_2 = [panel_linear_2, panel_log_2, panel_cobweb_2,]
-    tabs_2 = Tabs(tabs=panels_2)
-    plot_list_2 = [linear_2, log_2, cobweb_2,]
-
-    # Construct callback functions
-    update_menu_2 = CustomJS(args=dict(scale=scale_menu_2,
-                                       state=state_menu_2,
-                                       county=county_menu_2,
-                                       source=CDS_full,
-                                      ),
-                             code=js_code_menu)
-    update_data_2 = CustomJS(args=dict(metric=metric_2,
-                                       method=method_2,
-                                       scale=scale_menu_2,
-                                       state=state_menu_2,
-                                       county=county_menu_2,
-                                       plot=CDS_plot_2,
-                                       source=CDS_full,
-                                       avg=roll_avg,
-                                       linear_title=linear_2.title,
-                                       linear_x=linear_2.xaxis[0],
-                                       linear_y=linear_2.yaxis[0],
-                                       log_title=log_2.title,
-                                       log_x=log_2.xaxis[0],
-                                       log_y=log_2.yaxis[0],
-                                       cobweb_title=cobweb_2.title,
-                                       cobweb_x=cobweb_2.xaxis[0],
-                                       cobweb_y=cobweb_2.yaxis[0],
-                                      ),
-                             code=js_code_data+js_code_label)
-
-    # Callbacks
-    scale_menu_2.js_on_change('value', update_menu_2)
-    state_menu_2.js_on_change('value', update_menu_2)
-
-    scale_menu_2.js_on_change('value', update_data_2)
-    state_menu_2.js_on_change('value', update_data_2)
-    county_menu_2.js_on_change('value', update_data_2)
-    metric_2.js_on_change('value', update_data_2)
-    method_2.js_on_change('value', update_data_2)
-
-    ### End plot 2
+    ### End combined plots
 
 
     # Shared Callbacks
-    roll_avg.js_on_change('value', update_data_1)
-    roll_avg.js_on_change('value', update_data_2)
-    button.js_on_click(CustomJS(args=dict(scale_1=scale_menu_1,
-                                            state_1=state_menu_1,
-                                            county_1=county_menu_1,
-                                            scale_2=scale_menu_2,
-                                            state_2=state_menu_2,
-                                            county_2=county_menu_2,
-                                           ),
-                                  code=js_code_synchronize,
-                                 )
-                        )
+    menu_dict = {}
+    for i in range(N):
+        roll_avg.js_on_change('value', update_datas[i])
+        # store all menus to later be synchronized
+        menu_dict['scale_' + str(i + 1)] = scale_menus[i]
+        menu_dict['state_' + str(i + 1)] = state_menus[i]
+        menu_dict['county_' + str(i + 1)] = county_menus[i]
+    button.js_on_click(
+        CustomJS(
+            args=menu_dict,
+            code=js_code_synchronize,
+        )
+    )
 
-    # Display
-    for e in widget_list_1 + widget_list_2:
-        e.height = 50
-        e.width = 100
-        e.sizing_mode = 'fixed'
-    for e in plot_list_1 + plot_list_2:
-        e.sizing_mode = 'scale_both'
-        e.min_border_bottom = 80
-    for e in [tabs_1, tabs_2]:
+    # Display options
+    for i in range(N):
+        for e in widget_lists[i]:
+            e.height = 50
+            e.width = 100
+            e.sizing_mode = 'fixed'
+        for e in plot_lists[i]:
+            e.sizing_mode = 'scale_both'
+            e.min_border_bottom = 80
+    for e in tab_lists:
         e.aspect_ratio = 1
         e.sizing_mode = 'scale_both'
-    for e in [widgets_1, widgets_2]:
+    for e in layout_lists:
         e.sizing_mode = 'stretch_both'
     for e in [button, roll_avg]:
         e.sizing_mode = 'stretch_width'
-    display = gridplot([tabs_1, tabs_2,
-                        button, roll_avg,
-                        widgets_1, widgets_2,
-                       ], ncols=2, sizing_mode='stretch_both')
+    # Display arrangement
+    display = layout(
+        [
+        tab_lists,
+        [button, roll_avg],
+        layout_lists,
+        ],
+    )
 
-    show(display)
+    print('Saving output to html')
+    output_file(output_path)
+    save(display)
 
     return
 
 
 def main(update=None):
+    """Imports dataset and builds dashboard."""
+
+    # Command line options
     if len(sys.argv) > 1:
         if 'update' in sys.argv[1]:
             update = True
         elif sys.argv[1] == '-h' or 'help' in sys.argv[1]:
-            print(USAGE)
+            print(COMMAND_LINE_USAGE)
             return
-    make_plots(*import_data(update))
+
+    print('Using the following directories:')
+    print('SCRIPT_DIR:', SCRIPT_DIR)
+    print('CACHE_FILE:', CACHE_FILE)
+    print('OUTPUT_FILE:', OUTPUT_FILE)
+    print('DATA_URL:', DATA_URL)
+
+    import_data(update)
+    make_plots(*import_cache())
     return
 
 if __name__=='__main__':
