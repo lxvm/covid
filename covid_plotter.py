@@ -94,9 +94,21 @@ def import_cache(cache_file=CACHE_FILE):
     """Reads cached NYT covid-19 dataset into a tuple of dictionaries.
 
     The first dictionary contains the entire dataset.
-    The second dictionary contains a plottable subset.
-    This plottable subset is the national aggregates.
-    A plottable subset has the form of time series data.
+    Its key/value pairs are:
+    date : list -- datetime
+    state : list -- str
+    county : list -- str
+    cases : list -- float
+    deaths : list -- float
+    Note: all lists must have equal length and elements of the given type.
+
+    The second dictionary contains a plottable subset (default: national aggregates).
+    Its key/value pairs are:
+    date : list -- datetime
+    cases : list -- float
+    deaths : list -- float
+    Note: in a plottable subset, each date appears once in the time-series data.
+    Note: all lists must have equal length and elements of the given type.
 
     Keyword arguments:
     cache_file -- str -- a path to read the cache (default: CACHE_FILE)
