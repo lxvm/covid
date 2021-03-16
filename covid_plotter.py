@@ -39,8 +39,8 @@ from bokeh.io import output_file
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_FILE = SCRIPT_DIR + '/covid_static.html'
-CACHE_FILE = SCRIPT_DIR + '/covid_data.csv'
+OUTPUT_FILE = os.path.join(SCRIPT_DIR, 'covid_static.html')
+CACHE_FILE = os.path.join(SCRIPT_DIR, 'covid_data.csv')
 DATA_URL = 'http://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'
 
 
