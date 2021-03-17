@@ -8,7 +8,7 @@ Last updated 16/03/2021
 """
 
 COMMAND_LINE_USAGE = """
-python3 covid_plotter [OPTIONS]
+python3 covid_plotter.py [OPTIONS]
 
 DESCRIPTION:
     Uses Bokeh to make a covid-19 dashboard from latest NYT data.
