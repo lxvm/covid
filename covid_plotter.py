@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-
-
 """
 Uses Bokeh to make an interactive, static html
 document displaying the latest NYT covid-19 data.
@@ -8,7 +6,6 @@ document displaying the latest NYT covid-19 data.
 Written by Lorenzo Van Muñoz
 Last updated 16/03/2021
 """
-
 
 COMMAND_LINE_USAGE = """
 python3 covid_plotter [OPTIONS]
@@ -34,7 +31,7 @@ from bokeh.models import ColumnDataSource, CustomJS, Select, Slider, Button
 from bokeh.models.formatters import FuncTickFormatter
 from bokeh.models.widgets import Panel, Tabs
 from bokeh.plotting import figure, save
-from bokeh.layouts import grid
+from bokeh.layouts import grid, gridplot
 from bokeh.io import output_file
 
 
@@ -94,6 +91,12 @@ def import_data(update=None, cache_file=CACHE_FILE, script_dir=SCRIPT_DIR):
 def import_cache(cache_file=CACHE_FILE):
     """Reads cached NYT covid-19 dataset into a tuple of dictionaries.
 
+    The pandas equivalent of this function is:
+    df_full = pd.read_csv(CACHE_FILE)
+    df_full['date'] = pd.to_datetime(df_full['date'])
+    df_plot = df_full.loc[:, ['date', 'cases', 'deaths']].groupby('date').agg('sum').reset_index()
+    df_plot = df_plot.join(df_plot[['cases', 'deaths']].shift(fill_value=0).add_prefix('cobweb_'))
+
     The first dictionary contains the entire dataset.
     Its key/value pairs are:
     date : list -- datetime
@@ -108,6 +111,8 @@ def import_cache(cache_file=CACHE_FILE):
     date : list -- datetime
     cases : list -- float
     deaths : list -- float
+    cobweb_cases: list -- float
+    cobweb_deaths: list -- float
     Note: in a plottable subset, each date appears once in the time-series data.
     Note: all lists must have equal length and elements of the given type.
 
@@ -129,7 +134,7 @@ def import_cache(cache_file=CACHE_FILE):
         # First row in csv gives column names
         colnames = next(data)
         filter = ['date', 'cases', 'deaths', 'state', 'county']
-        df = {col:[] for col in colnames if col in filter}
+        df_full = {col:[] for col in colnames if col in filter}
 
         # Populate dataframe from csv
         for i, rrow in enumerate(data):
@@ -137,43 +142,49 @@ def import_cache(cache_file=CACHE_FILE):
                 if colnames[j] in filter:
                     key = colnames[j]
                     if key in ['date']:
-                        df[colnames[j]].append(datetime(*[int(e) for e in col.split('-')]))
+                        df_full[colnames[j]].append(datetime(*[int(e) for e in col.split('-')]))
                     elif key in ['cases', 'deaths']:
                         if col.isnumeric():
-                            df[key].append(float(col))
+                            df_full[key].append(float(col))
                         else: # Missing data as zero
-                            df[key].append(0.)
+                            df_full[key].append(0.)
                     else:
-                        df[key].append(col)
+                        df_full[key].append(col)
 
     # create national aggregates
-    df_national = {key:[] for key in ['date', 'cases', 'deaths']}
-    for i, e in enumerate(df['date']):
-        if e in df_national['date']:
-            pos = df_national['date'].index(e)
+    df_plot = {key:[] for key in ['date', 'cases', 'deaths']}
+    for i, e in enumerate(df_full['date']):
+        if e in df_plot['date']:
+            pos = df_plot['date'].index(e)
             for key in ['cases', 'deaths']:
-                df_national[key][pos] += df[key][i]
+                df_plot[key][pos] += df_full[key][i]
         else:
-            for key in df_national.keys():
-                df_national[key].append(df[key][i])
-    return (df, df_national)
+            for key in df_plot.keys():
+                df_plot[key].append(df_full[key][i])
+    df_plot['cobweb_cases'] = [0] + df_plot['cases'][:-1]
+    df_plot['cobweb_deaths'] = [0] + df_plot['deaths'][:-1]
+
+    return (df_full, df_plot)
 
 
-def make_plots(df_full, df_plot, output_path=OUTPUT_FILE):
-    """Builds the plot dashboard and saves it to html.
+def make_plots(df_full, df_plot):
+    """Builds the Bokeh plot dashboard.
 
-    Uses the Bokeh package to create the plots in the static html output.
+    Uses the Bokeh package to create the plots in the dashboard.
     Client-side html interactivity is provided by Bokeh's Javascript callbacks.
 
     Required arguments:
-    df_full -- dict -- containing the whole NYT dataset
-    df_plot -- dict -- containing a plottable subset (e.g. national aggregates)
+    df_full -- dict or pd.dataframe -- containing the whole NYT dataset
+    df_plot -- dict or pd.dataframe -- contains a plottable subset of dataset
+    Both objects will be passed as inputs to ColumnDataSources
+    The expected keys/columns of df_full are:
+    date, state, county, cases, deaths
+    The expected keys/columns in each element of df_plot are:
+    date, cases, deaths, cobweb_cases, cobweb_deaths
 
-    Keyword arguments:
-    output_path -- str -- a path to a html file to write to (default: OUTPUT_FILE)
+    Returns:
+    bokeh.layouts.grid -- can be saved or used in jupyter notebook
     """
-
-    print('Building plots')
     ### Begin Shared objects
 
     # Column Data Source (which can be filtered later)
@@ -354,7 +365,10 @@ def make_plots(df_full, df_plot, output_path=OUTPUT_FILE):
     update_datas = []
 
     # Create a plot for the desired number of plots
-    N = 2 # If N > 2, the js_code_synchronize piece is affected
+    N = 2
+    # If N > 2, the following items are affected:
+    # metrics
+    # js_code_synchronize
     for i in range(N):
 
         # Initial plot data
@@ -364,7 +378,7 @@ def make_plots(df_full, df_plot, output_path=OUTPUT_FILE):
                 {
                 'date' : df_plot['date'],
                 'metric' : df_plot[metrics[i]],
-                'cobweb' : [0] + df_plot[metrics[i]][:-1],
+                'cobweb' : df_plot['cobweb_' + metrics[i]],
                 }
             )
         )
@@ -582,18 +596,13 @@ def make_plots(df_full, df_plot, output_path=OUTPUT_FILE):
     # Display arrangement
     display = grid(
         [
-        tab_lists,
+        gridplot([tab_lists]),
         [button, roll_avg],
         widget_layouts,
         ],
         sizing_mode='stretch_both',
     )
-
-    print('Saving output to html')
-    output_file(output_path)
-    save(display)
-
-    return
+    return(display)
 
 
 def main(update=None):
@@ -614,7 +623,12 @@ def main(update=None):
     print('DATA_URL:', DATA_URL)
 
     import_data(update)
-    make_plots(*import_cache())
+    cache = import_cache()
+    print('Building plots')
+    display = make_plots(*cache)
+    print('Saving output to html')
+    output_file(OUTPUT_FILE)
+    save(display)
     return
 
 if __name__=='__main__':
