@@ -15,6 +15,7 @@ DESCRIPTION:
 
 OPTIONS:
     update      updates cached dataset if older than 1 day, then dashboard
+    -v          verbose output
     -h, help    show this message and exit
 """
 
@@ -23,6 +24,8 @@ import os
 import sys
 import csv
 import time
+import json
+import logging
 from codecs import iterdecode
 from datetime import datetime
 from urllib.request import urlopen
@@ -56,35 +59,35 @@ def download_data(data_url=DATA_URL, cache_file=CACHE_FILE):
     return
 
 
-def import_data(update=None, cache_file=CACHE_FILE, script_dir=SCRIPT_DIR):
+def import_data(update=None, data_url=DATA_URL, cache_file=CACHE_FILE):
     """Creates or updates the cached dataset.
 
     By default uses an existing cache.
 
     Keyword arguments:
     update -- bool -- only replaces cache if older than 1 day (default: None)
+    data_url -- str -- the url to the NYT covid-19 data repo (default DATA_URL)
     cache_file -- str -- a path to save the cache (default: CACHE_FILE)
-    script_dir -- str -- the current directory of the script (default: SCRIPT_DIR)
     """
 
     # Save dataset to cache because it is large
     if os.path.exists(cache_file):
         # Don't import new data unless 1 day/86400 seconds have passed
         # Since COVID numbers are only update daily
-        print('Cache found')
+        logging.info('Cache found')
         if update and ((time.time() - os.path.getmtime(cache_file)) > 86400):
-            print('Updating cache')
+            logging.info('Updating cache')
             download_data()
         elif update:
-            print('Data already up to date')
-        print('Using cached data')
+            logging.info('Data already up to date')
+        logging.info('Using cached data')
     else:
-        if os.access(script_dir, os.W_OK):
-            print('Saving data to cache located at ' + cache_file)
+        if os.access(os.path.basename(cache_file), os.W_OK):
+            logging.info('Saving data to cache located at ' + cache_file)
             download_data()
         else:
-            print('Please edit the cache directory in the script')
-            raise PermissionError(script_dir + ' is not writeable')
+            logging.info('Please edit the cache directory in the script')
+            raise PermissionError('%s is not writeable', os.path.basename(cache_file))
     return
 
 
@@ -123,7 +126,7 @@ def import_cache(cache_file=CACHE_FILE):
     tuple -- (dict, dict) -- the full and plottable datasets, respectively
     """
 
-    print('Reading cache')
+    logging.info('Reading cache')
     # Read in dataset from cache
     with open(cache_file, 'r') as csvfile:
         data = csv.reader(csvfile)
@@ -610,23 +613,35 @@ def main(update=None):
 
     # Command line options
     if len(sys.argv) > 1:
-        if 'update' in sys.argv[1]:
-            update = True
-        elif sys.argv[1] == '-h' or 'help' in sys.argv[1]:
+        if 'help' in sys.argv or '-h' in sys.argv:
             print(COMMAND_LINE_USAGE)
             return
+        if 'update' in sys.argv:
+            update = True
+        if '-v' in sys.argv:
+            logging.basicConfig(level=logging.INFO)
 
-    print('Using the following directories:')
-    print('SCRIPT_DIR:', SCRIPT_DIR)
-    print('CACHE_FILE:', CACHE_FILE)
-    print('OUTPUT_FILE:', OUTPUT_FILE)
-    print('DATA_URL:', DATA_URL)
+    global CACHE_FILE, OUTPUT_FILE, DATA_URL
 
-    import_data(update)
-    cache = import_cache()
-    print('Building plots')
+    # Import optional JSON configuration
+    if os.path.exists(os.path.join(SCRIPT_DIR, 'covid_plotter.json')):
+        dirs = json.load(open(os.path.join(SCRIPT_DIR, 'covid_plotter.json'), 'r'))
+        if 'cache' in dirs.keys():
+            CACHE_FILE = dirs['cache']
+        if 'output' in dirs.keys():
+            OUTPUT_FILE = dirs['output']
+        if 'data' in dirs.keys():
+            DATA_URL = dirs['data']
+
+    logging.info('DATA_URL: %s', DATA_URL)
+    logging.info('CACHE_FILE: %s', CACHE_FILE)
+    logging.info('OUTPUT_FILE: %s', OUTPUT_FILE)
+
+    import_data(update, DATA_URL, CACHE_FILE)
+    cache = import_cache(CACHE_FILE)
+    logging.info('Building plots')
     display = make_plots(*cache)
-    print('Saving output to html')
+    logging.info('Saving output')
     output_file(OUTPUT_FILE)
     save(display)
     return

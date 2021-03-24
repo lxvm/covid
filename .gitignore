@@ -3,4 +3,5 @@ __pycache__
 *.html
 *.csv
 *.sw*
+covid_plotter.json
 update_html.sh
