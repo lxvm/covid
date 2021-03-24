@@ -1,22 +1,28 @@
 #!/usr/bin/env python3
 """
-Uses Bokeh to make an interactive, static html
+Use Bokeh to make an interactive, static html
 document displaying the latest NYT covid-19 data.
 
-Written by Lorenzo Van Muñoz
-Last updated 16/03/2021
-"""
-
-COMMAND_LINE_USAGE = """
+Command-line usage:
 python3 covid_plotter.py [OPTIONS]
 
-DESCRIPTION:
-    Uses Bokeh to make a covid-19 dashboard from latest NYT data.
+Options:
+update      updates cached dataset if older than 1 day, then dashboard
+-v          verbose output
+-h, help    show this message and exit
 
-OPTIONS:
-    update      updates cached dataset if older than 1 day, then dashboard
-    -v          verbose output
-    -h, help    show this message and exit
+Configuration (optional):
+Variables in a 'covid_plotter.json' file are loaded when main() is called.
+The recognized variables are: 'cache', 'output', and 'data'. By default:
+{
+  "cache": "./covid_data.csv",
+  "output": "./covid_static.html"
+  "data": "http://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv"
+}
+where "." is equivalent to `dirname covid_plotter.py`.
+
+Written by Lorenzo Van Muñoz
+Last updated 24/03/2021
 """
 
 
@@ -614,7 +620,7 @@ def main(update=None):
     # Command line options
     if len(sys.argv) > 1:
         if 'help' in sys.argv or '-h' in sys.argv:
-            print(COMMAND_LINE_USAGE)
+            print(__doc__)
             return
         if 'update' in sys.argv:
             update = True
