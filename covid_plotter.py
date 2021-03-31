@@ -214,9 +214,11 @@ def make_plots(df_full, df_plot):
 
     # Create a plot for the desired number of plots
     N = 2
-    # If N > 2, the following items are affected:
-    # metrics
-    # js_code_synchronize
+    # If N != 2, the following items are affected:
+    # metrics, since loop excepts len(metrics) >= N
+    # CustomJS for the synchronize button
+    # since it adds no functionality if N=1
+    # and if N > 2 needs to make more updates for other plots
     for i in range(N):
 
         # Initial plot data
