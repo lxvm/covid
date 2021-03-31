@@ -7,7 +7,7 @@ Command-line usage:
 python3 covid_plotter.py [OPTIONS]
 
 Options:
-update      updates cached dataset if older than 1 day, then dashboard
+update      updates cached dataset, then dashboard
 -v          verbose output
 -h, help    show this message and exit
 
@@ -32,7 +32,6 @@ import csv
 import time
 import json
 import logging
-from codecs import iterdecode
 from datetime import datetime
 from urllib.request import urlopen
 
@@ -50,50 +49,25 @@ CACHE_FILE = os.path.join(SCRIPT_DIR, 'covid_data.csv')
 DATA_URL = 'http://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'
 
 
-def download_data(data_url=DATA_URL, cache_file=CACHE_FILE):
-    """Downloads the csv file from DATA_URL to CACHE_FILE.
-
-    Keyword arguments:
-    data_url -- str -- the url to the NYT covid-19 data repo (default DATA_URL)
-    cache_file -- str -- a path to save the cache (default CACHE_FILE)
-    """
-
-    with urlopen(data_url) as html, open(cache_file, 'w', newline='') as csvfile:
-        html = iterdecode(html, 'utf-8')
-        data = csv.reader(html)
-        csv.writer(csvfile).writerows(data)
-    return
-
-
 def import_data(update=None, data_url=DATA_URL, cache_file=CACHE_FILE):
     """Creates or updates the cached dataset.
 
     By default uses an existing cache.
 
     Keyword arguments:
-    update -- bool -- only replaces cache if older than 1 day (default: None)
+    update -- bool -- replaces cached dataset with latest dataset (default: None)
     data_url -- str -- the url to the NYT covid-19 data repo (default DATA_URL)
     cache_file -- str -- a path to save the cache (default: CACHE_FILE)
     """
 
-    # Save dataset to cache because it is large
-    if os.path.exists(cache_file):
-        # Don't import new data unless 1 day/86400 seconds have passed
-        # Since COVID numbers are only update daily
-        logging.info('Cache found')
-        if update and ((time.time() - os.path.getmtime(cache_file)) > 86400):
-            logging.info('Updating cache')
-            download_data()
-        elif update:
-            logging.info('Data already up to date')
-        logging.info('Using cached data')
-    else:
-        if os.access(os.path.basename(cache_file), os.W_OK):
-            logging.info('Saving data to cache located at ' + cache_file)
-            download_data()
-        else:
-            logging.info('Please edit the cache directory in the script')
-            raise PermissionError('%s is not writeable', os.path.basename(cache_file))
+    try:
+        assert not update
+        assert os.path.exists(cache_file)
+        logging.info('Using data from existing cache')
+    except Exception:
+        logging.info('Downloading latest data')
+        with urlopen(data_url) as data, open(cache_file, 'wb') as cache:
+            cache.writelines(line for line in data)
     return
 
 
