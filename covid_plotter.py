@@ -182,141 +182,6 @@ def make_plots(df_full, df_plot):
     button = Button(label='Synchronize', button_type="success", sizing_mode='stretch_width')
     roll_avg = Slider(title='Rolling Average', value=1, start=1, end=14, step=1, sizing_mode='stretch_width')
 
-    # Shared Callback code
-    js_code_menu = """
-        if (scale.value === 'national') {
-            state.visible = false
-            county.visible = false
-        }
-
-        else if (scale.value === 'state') {
-            state.visible = true
-            county.visible = false
-        }
-
-        else if (scale.value === 'county') {
-            state.visible = true
-            county.visible = true
-
-            // filter the state and then unique counties
-            function oneState(value, index, self) {
-                return source.data['state'][index] === state.value
-            }
-
-            function onlyUnique(value, index, self) {
-                return self.indexOf(value) === index;
-            }
-
-            let counties_in_state = source.data['county'].filter(oneState).filter(onlyUnique).sort()
-
-            if (counties_in_state.indexOf(county.value) === -1) {
-                county.value = counties_in_state[0]
-            }
-            county.options = counties_in_state
-        };
-    """
-
-    js_code_data = """
-        let plot_x = []
-        let plot_y = []
-        let plot_z = []
-        let nDays = -1
-        let yesterdate = 0
-
-        function mask (x) {
-            if (scale.value === 'national') {
-                return true
-            }
-            else if (scale.value === 'state') {
-                return source.data['state'][x] === state.value
-            }
-            else { // if (scale.value === 'county') {
-                return source.data['county'][x] === county.value
-            }
-        }
-
-        // this works because it knows the dates are in increasing order
-        for (let i=0; i < source.data['date'].length; i++) {
-            if (mask(i)) { // filter by scale
-                if (yesterdate < source.data['date'][i]) {
-                    plot_x.push(source.data['date'][i])
-                    plot_y.push(source.data[metric.value][i])
-                    yesterdate = source.data['date'][i]
-                    nDays += 1
-                }
-                else { // aggregate values with the same date
-                    plot_y[nDays] += source.data[metric.value][i]
-                }
-            }
-        }
-
-
-        // Extra transformations (edge cases are the first few days)
-        // Except for edge cases, you can show that the order of
-        // difference and average doesn't matter
-        if (method.value === 'difference') {
-            // Converts from raw cumulative data
-            for (let i=plot_x.length-1; i > 0; i--) {
-                plot_y[i] -= plot_y[i-1]
-            }
-        }
-        // Rolling Average (uniform backwards window (avg over last x days))
-        if (avg.value > 1) {
-            for (let i=plot_x.length-1; i > avg.value-1; i--) {
-                plot_y[i] = plot_y.slice(i-avg.value, i+1).reduce((a, b) => a + b, 0) / (avg.value+1)
-            }
-        }
-
-        // cobweb plotting
-        plot_z = plot_y.slice()
-        plot_z.pop()
-        plot_z.unshift(0)
-
-        // update ColumnDataSource
-        plot.data['date'] = plot_x
-        plot.data['metric'] = plot_y
-        plot.data['cobweb'] = plot_z
-        plot.change.emit();
-    """
-
-    js_code_label="""
-    if (scale.value === 'national') {
-        linear_title.text = 'NYT COVID-19 data: National'
-        log_title.text = 'NYT COVID-19 data: National'
-        cobweb_title.text = 'NYT COVID-19 data: National'
-    }
-    else if (scale.value === 'state') {
-        linear_title.text = 'NYT COVID-19 data: State: '+ state.value
-        log_title.text = 'NYT COVID-19 data: State: ' + state.value
-        cobweb_title.text = 'NYT COVID-19 data: State: ' + state.value
-    }
-    else { // if (scale.value === 'county') {
-        linear_title.text = 'NYT COVID-19 data: County: ' + county.value
-        log_title.text = 'NYT COVID-19 data: County: ' + county.value
-        cobweb_title.text = 'NYT COVID-19 data: County: ' + state.value
-    }
-
-    let method_name =''
-    if (method.value === 'difference') {
-        method_name = 'New '
-    }
-    else { // if (method.value === 'cumulative')
-        method_name = 'Cumulative '
-    }
-    linear_y.axis_label = method_name + metric.value
-    log_y.axis_label = method_name + metric.value
-    cobweb_x.axis_label = method_name + metric.value + ' today'
-    cobweb_y.axis_label = method_name + metric.value + ' tomorrow'
-    ;
-    """
-
-    js_code_synchronize="""
-        scale_2.value = scale_1.value
-        state_2.value = state_1.value
-        county_2.value = county_1.value
-    ;
-    """
-
     ### End shared objects
 
 
@@ -505,7 +370,38 @@ def make_plots(df_full, df_plot):
                     county=county_menus[i],
                     source=CDS_full,
                 ),
-                code=js_code_menu
+                code="""
+                    if (scale.value === 'national') {
+                        state.visible = false
+                        county.visible = false
+                    }
+
+                    else if (scale.value === 'state') {
+                        state.visible = true
+                        county.visible = false
+                    }
+
+                    else if (scale.value === 'county') {
+                        state.visible = true
+                        county.visible = true
+
+                        // filter the state and then unique counties
+                        function oneState(value, index, self) {
+                            return source.data['state'][index] === state.value
+                        }
+
+                        function onlyUnique(value, index, self) {
+                            return self.indexOf(value) === index;
+                        }
+
+                        let counties_in_state = source.data['county'].filter(oneState).filter(onlyUnique).sort()
+
+                        if (counties_in_state.indexOf(county.value) === -1) {
+                            county.value = counties_in_state[0]
+                        }
+                        county.options = counties_in_state
+                    }
+                """
             )
         )
         update_datas.append(
@@ -529,7 +425,96 @@ def make_plots(df_full, df_plot):
                     cobweb_x=cobweb_plots[i].xaxis[0],
                     cobweb_y=cobweb_plots[i].yaxis[0],
                 ),
-                code=js_code_data+js_code_label
+                code="""
+                    let plot_x = []
+                    let plot_y = []
+                    let plot_z = []
+                    let nDays = -1
+                    let yesterdate = 0
+
+                    function mask (x) {
+                        if (scale.value === 'national') {
+                            return true
+                        }
+                        else if (scale.value === 'state') {
+                            return source.data['state'][x] === state.value
+                        }
+                        else { // if (scale.value === 'county') {
+                            return source.data['county'][x] === county.value
+                        }
+                    }
+
+                    // this works because it knows the dates are in increasing order
+                    for (let i=0; i < source.data['date'].length; i++) {
+                        if (mask(i)) { // filter by scale
+                            if (yesterdate < source.data['date'][i]) {
+                                plot_x.push(source.data['date'][i])
+                                plot_y.push(source.data[metric.value][i])
+                                yesterdate = source.data['date'][i]
+                                nDays += 1
+                            }
+                            else { // aggregate values with the same date
+                                plot_y[nDays] += source.data[metric.value][i]
+                            }
+                        }
+                    }
+
+                    // Extra transformations (edge cases are the first few days)
+                    // Except for edge cases, you can show that the order of
+                    // difference and average doesn't matter
+                    if (method.value === 'difference') {
+                        // Converts from raw cumulative data
+                        for (let i=plot_x.length-1; i > 0; i--) {
+                            plot_y[i] -= plot_y[i-1]
+                        }
+                    }
+                    // Rolling Average (uniform backwards window (avg over last x days))
+                    if (avg.value > 1) {
+                        for (let i=plot_x.length-1; i > avg.value-1; i--) {
+                            plot_y[i] = plot_y.slice(i-avg.value, i+1).reduce((a, b) => a + b, 0) / (avg.value+1)
+                        }
+                    }
+
+                    // cobweb plotting
+                    plot_z = plot_y.slice()
+                    plot_z.pop()
+                    plot_z.unshift(0)
+
+                    // update ColumnDataSource
+                    plot.data['date'] = plot_x
+                    plot.data['metric'] = plot_y
+                    plot.data['cobweb'] = plot_z
+                    plot.change.emit()
+
+                    // Update plot labels
+                    if (scale.value === 'national') {
+                        linear_title.text = 'NYT COVID-19 data: National'
+                        log_title.text = 'NYT COVID-19 data: National'
+                        cobweb_title.text = 'NYT COVID-19 data: National'
+                    }
+                    else if (scale.value === 'state') {
+                        linear_title.text = 'NYT COVID-19 data: State: '+ state.value
+                        log_title.text = 'NYT COVID-19 data: State: ' + state.value
+                        cobweb_title.text = 'NYT COVID-19 data: State: ' + state.value
+                    }
+                    else { // if (scale.value === 'county') {
+                        linear_title.text = 'NYT COVID-19 data: County: ' + county.value
+                        log_title.text = 'NYT COVID-19 data: County: ' + county.value
+                        cobweb_title.text = 'NYT COVID-19 data: County: ' + state.value
+                    }
+
+                    let method_name =''
+                    if (method.value === 'difference') {
+                        method_name = 'New '
+                    }
+                    else { // if (method.value === 'cumulative')
+                        method_name = 'Cumulative '
+                    }
+                    linear_y.axis_label = method_name + metric.value
+                    log_y.axis_label = method_name + metric.value
+                    cobweb_x.axis_label = method_name + metric.value + ' today'
+                    cobweb_y.axis_label = method_name + metric.value + ' tomorrow'
+                """
             )
         )
 
@@ -558,7 +543,11 @@ def make_plots(df_full, df_plot):
     button.js_on_click(
         CustomJS(
             args=menu_dict,
-            code=js_code_synchronize,
+            code="""
+                scale_2.value = scale_1.value
+                state_2.value = state_1.value
+                county_2.value = county_1.value
+            """
         )
     )
 
