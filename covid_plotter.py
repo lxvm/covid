@@ -29,7 +29,6 @@ Last updated 24/03/2021
 import os
 import sys
 import csv
-import time
 import json
 import logging
 from datetime import datetime
