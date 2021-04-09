@@ -4,16 +4,19 @@ Use Bokeh to make an interactive, static html
 document displaying the latest NYT covid-19 data.
 
 Command-line usage:
-python3 covid_plotter.py [OPTIONS]
+python3 covid_plotter.py [OPTIONS] [ACTIONS]
 
 Options:
-update      updates cached dataset, then dashboard
+-cfg <file> path to a configuration file
 -v          verbose output
 -h, help    show this message and exit
 
+Actions:
+update      updates cached dataset, then dashboard
+
 Configuration (optional):
-Variables in a 'covid_plotter.json' file are loaded when main() is called.
-The recognized variables are: 'cache', 'output', and 'data'. By default:
+The optional configuration file needs to be in JSON format and it modifies paths.
+The recognized options are: 'cache', 'output', and 'data'. By default:
 {
   "cache": "./covid_data.csv",
   "output": "./covid_static.html"
@@ -22,7 +25,7 @@ The recognized variables are: 'cache', 'output', and 'data'. By default:
 where "." is equivalent to `dirname covid_plotter.py`.
 
 Written by Lorenzo Van Muñoz
-Last updated 24/03/2021
+Last updated 2021-04-08
 """
 
 
@@ -581,8 +584,10 @@ def make_plots(df_full, df_plot):
 def main(update=None):
     """Imports dataset and builds dashboard."""
 
+    global CACHE_FILE, OUTPUT_FILE, DATA_URL
+
     # Command line options
-    if len(sys.argv) > 1:
+    try:
         if 'help' in sys.argv or '-h' in sys.argv:
             print(__doc__)
             return
@@ -590,18 +595,17 @@ def main(update=None):
             update = True
         if '-v' in sys.argv:
             logging.basicConfig(level=logging.INFO)
-
-    global CACHE_FILE, OUTPUT_FILE, DATA_URL
-
-    # Import optional JSON configuration
-    if os.path.exists(os.path.join(SCRIPT_DIR, 'covid_plotter.json')):
-        dirs = json.load(open(os.path.join(SCRIPT_DIR, 'covid_plotter.json'), 'r'))
+        # Import optional JSON configuration
+        CFG_FILE = sys.argv[sys.argv.index('-cfg') + 1]
+        dirs = json.load(open(CFG_FILE, 'r'))
         if 'cache' in dirs.keys():
             CACHE_FILE = dirs['cache']
         if 'output' in dirs.keys():
             OUTPUT_FILE = dirs['output']
         if 'data' in dirs.keys():
             DATA_URL = dirs['data']
+    except Exception:
+        pass
 
     logging.info('DATA_URL: %s', DATA_URL)
     logging.info('CACHE_FILE: %s', CACHE_FILE)
