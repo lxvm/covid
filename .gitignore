@@ -5,3 +5,5 @@ __pycache__
 *.sw*
 covid_plotter.json
 update_html.sh
+scripts
+data
