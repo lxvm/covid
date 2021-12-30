@@ -3,5 +3,7 @@ __pycache__
 *.html
 *.csv
 *.sw*
+*.zip
 covid_plotter.json
 update_html.sh
+bokeh
