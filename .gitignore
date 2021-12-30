@@ -7,3 +7,5 @@ __pycache__
 covid_plotter.json
 update_html.sh
 bokeh
+scripts
+data
