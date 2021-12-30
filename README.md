@@ -2,6 +2,9 @@
 
 Interactive visualization from NYT statistics
 
+<span style="color:blue">*New!*</span>: Visit the plotter 
+[here](https://www.its.caltech.edu/~lvanmuno/covid_static.html)
+
 ![New York Times Dashboard](example.jpeg)
 
 ## Summary 
