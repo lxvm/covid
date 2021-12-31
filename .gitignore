@@ -9,3 +9,4 @@ update_html.sh
 bokeh
 scripts
 data
+venv
